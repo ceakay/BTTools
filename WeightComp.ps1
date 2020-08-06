@@ -19,8 +19,10 @@ $ClassWeights = @{
 $MDefFileObjectList = @(Get-ChildItem $CacheRoot -Recurse -Filter "mechdef*.json")
 
 $CSV = "D:\weights.csv"
+$CSV2 = "D:\sheavies.csv"
 
-'Mech,Error' > $CSV
+#'Mech,Error' > $CSV
+'Mech,Error' > $CSV2
 
 foreach ($MDefFileObject in $MDefFileObjectList) {
     #setup CDef and MDef objects
@@ -36,6 +38,7 @@ foreach ($MDefFileObject in $MDefFileObjectList) {
     }
     $filePathCDef = $CDefFileObject.VersionInfo.FileName
     try {$CDefObject = $(Get-Content $filePathCDef -raw | ConvertFrom-Json)} catch {Write-Host $filePathCDef}
+    <#
     $CDefweightClass = $CDefObject.weightClass
     $MDefweightClass = $MDefObject.MechTags.items | Where-Object {$ClassWeights.Keys -contains $_}
     if ($MDefweightClass.Count -gt 1) {
@@ -45,6 +48,15 @@ foreach ($MDefFileObject in $MDefFileObjectList) {
     } else {
         if ($ClassWeights.$MDefweightClass -notlike $CDefweightClass) {
             "$($filePathMDef),mismatch class" >> $CSV
+        }
+    }
+    #>
+    $SHeavies = $MDefObject.MechTags.items | Where-Object {@('unit_superheavy') -contains $_}
+    if ($SHeavies.Count -eq 1) {
+        $SHarray = $ClassWeights.Keys + 'unit_superheavy'
+        $SHeaviesCounter = $MDefObject.MechTags.items | Where-Object {$SHarray -contains $_}
+        if ($SHeaviesCounter.Count -ge 2) {
+            "$($filePathMDef),SH has multiple tags" >> $CSV2
         }
     }
 }
