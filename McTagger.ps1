@@ -393,14 +393,23 @@ $Sep
             $MechStealth = $false
             if (<#Do some stealth parsing#>) {}
             $MechStats1 = "   MechStats || Name: $($TDef.Description.Name)"
+            if ($MechStats1.Length -gt 63) {
+                $MechStats1 = $MechStats1.Substring(0,63)
+            }
             do {$MechStats1 += " "} until ($MechStats1.Length -ge 64)
             Write-Host $MechStats1
             #Class Stats
-            $MechClass = $($TDef.MechTags.items | ? {$_ -in $ClassWeights.Keys})
-            $ClassStats1 = "  ClassStats || Class: $($ClassWeights.$MechClass)"
-            do {$ClassStats1 += " "} until ($ClassStats1.Length -ge 34)
-            $ClassStats1 += "|| AvgTon: $($ClassAverages.$($CDef
+            [string]$MechClass = $ClassWeights.$($TDef.MechTags.items | ? {$ClassWeights.Keys -contains $_})
+            $ClassStats1 = "  ClassStats || Class: $MechClass"
+            do {$ClassStats1 += " "} until ($ClassStats1.Length -ge 64)
+            $ClassStats1 += "|| AvgTon: $($ClassAverages.$($TDef.MechTags.items | ? {$ClassWeights.Keys -contains $_}).AvgTonnage)"
+            do {$ClassStats1 += " "} until ($ClassStats1.Length -ge 79)
+            [int]$AvgSpeed = $($ClassAverages.$($TDef.MechTags.items | ? {$ClassWeights.Keys -contains $_}).AvgEngine) / $($ClassAverages.$($TDef.MechTags.items | ? {$ClassWeights.Keys -contains $_}).AvgTonnage)
+            $ClassStats1 += "|| AvgSpd: $AvgSpeed"
+            do {$ClassStats1 += " "} until ($ClassStats1.Length -ge 94)
+            $ClassStats1 += "|| AvgArm: $($ClassAverages.$($TDef.MechTags.items | ? {$ClassWeights.Keys -contains $_}).AvgSetArmor) / $($ClassAverages.$($TDef.MechTags.items | ? {$ClassWeights.Keys -contains $_}).AvgMaxArmor)"
             Write-Host $ClassStats1
+            Write-Host $Sep
             #Fill remaining lines including 57
             do {
                 $LineNum++
