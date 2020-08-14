@@ -103,13 +103,13 @@ Types:
 2) Mechs
 3) Tanks
 4) VTOL
-GEAR NOT YET IMPLEMENTED.
 "@
         <#
         Type Notes
         PA/Proto need seperate parse due to combined classes unit_powerarmor, unit_protomech
         VTOL need seperate parse due to unique weight classes
-        Gear is a fucking pain to parse. 
+        Gear is a fucking pain to parse. Not implementing in forseeable future
+
         #>
         $TypeSelect = Read-Host -Prompt "Select Type (1-4)"
         
@@ -390,23 +390,41 @@ $Sep
 "@
             $LineNum = $LineNum+3
             #Mech Stats
-            $MechStealth = $false
-            if (<#Do some stealth parsing#>) {}
             $MechStats1 = "   MechStats || Name: $($TDef.Description.Name)"
-            if ($MechStats1.Length -gt 63) {
-                $MechStats1 = $MechStats1.Substring(0,63)
+            if ($MechStats1.Length -gt 73) {
+                $MechStats1 = $MechStats1.Substring(0,73)
             }
-            do {$MechStats1 += " "} until ($MechStats1.Length -ge 64)
+            do {$MechStats1 += " "} until ($MechStats1.Length -ge 74)
+            $MechStats1 += "|| Tonnage: $($CDef.Tonnage)"
+            do {$MechStats1 += " "} until ($MechStats1.Length -ge 94)
+            $MechEngine = $($TDef.inventory -match 'emod_engine_[0-9]{3}').ComponentDefID
+            if (!$MechEngine) { $Engine = $($CDef.FixedEquipment -match 'emod_engine_[0-9]{3}').ComponentDefID }
+            $MechEngine = @($MechEngine -split '\s+')[0]
+            $MechEngine = [int]([regex]::Matches($MechEngine,'[0-9]{3}').Value)
+            [int]$MechSpeed = $MechEngine / $CDef.Tonnage
+            $MechStats1 += "|| Speed: $($CDef.Tonnage)"
+            do {$MechStats1 += " "} until ($MechStats1.Length -ge 114)
+            $MechStats1 += "|| Armor: $($($TDef.Locations | Measure-Object -Property AssignedArmor -Sum).Sum) / $($($CDef.Locations | Measure-Object -Property MaxArmor -Sum).Sum)"
             Write-Host $MechStats1
+            #Mech Parts
+            $MechStealth = $false
+            $MechJump = $false
+            $MechParts1 = "   MechParts || Hardpoints | "
+            if (<#Do some stealth parsing#>) {}
+            $MechParts1 += "|| Stealth: $MechStealth"
+            do {$MechParts1 += " "} until ($MechParts1.Length -ge 54)
+            if (<#Do some jump parsing#>) {}
+            $MechParts1 += "|| Jumps: $MechJump"
+            do {$MechParts1 += " "} until ($MechParts1.Length -ge 74)
             #Class Stats
             [string]$MechClass = $ClassWeights.$($TDef.MechTags.items | ? {$ClassWeights.Keys -contains $_})
             $ClassStats1 = "  ClassStats || Class: $MechClass"
-            do {$ClassStats1 += " "} until ($ClassStats1.Length -ge 64)
+            do {$ClassStats1 += " "} until ($ClassStats1.Length -ge 74)
             $ClassStats1 += "|| AvgTon: $($ClassAverages.$($TDef.MechTags.items | ? {$ClassWeights.Keys -contains $_}).AvgTonnage)"
-            do {$ClassStats1 += " "} until ($ClassStats1.Length -ge 79)
+            do {$ClassStats1 += " "} until ($ClassStats1.Length -ge 94)
             [int]$AvgSpeed = $($ClassAverages.$($TDef.MechTags.items | ? {$ClassWeights.Keys -contains $_}).AvgEngine) / $($ClassAverages.$($TDef.MechTags.items | ? {$ClassWeights.Keys -contains $_}).AvgTonnage)
             $ClassStats1 += "|| AvgSpd: $AvgSpeed"
-            do {$ClassStats1 += " "} until ($ClassStats1.Length -ge 94)
+            do {$ClassStats1 += " "} until ($ClassStats1.Length -ge 114)
             $ClassStats1 += "|| AvgArm: $($ClassAverages.$($TDef.MechTags.items | ? {$ClassWeights.Keys -contains $_}).AvgSetArmor) / $($ClassAverages.$($TDef.MechTags.items | ? {$ClassWeights.Keys -contains $_}).AvgMaxArmor)"
             Write-Host $ClassStats1
             Write-Host $Sep
