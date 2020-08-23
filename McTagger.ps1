@@ -21,6 +21,9 @@ $ClassWeights = @{
     unit_superheavy = "SUPERHEAVY"
 }
 
+#Hardpoint Types
+$HardTypes = @('Ballistic','Energy','Missile','AntiPersonnel','Omni')
+
 #Sorted array weights
 
 #Tool Pre-setup
@@ -224,6 +227,7 @@ Line 2+: Values
 
 #Filter and Gather objects
 Clear-Host
+Write-Host 'Preparing Tool'
 Write-Host 'Gathering JSON Objects'
 
 switch ($TypeSelect) {
@@ -281,7 +285,7 @@ if (($TypeSelect -ge 1) -and ($TypeSelect -le 4)) {
     #construct mega component object list
     #get a list of jsons
     $ComponentObjectList = @()
-    $ComponentFilter = "*`"ComponentType`":*"
+    $ComponentFilter = "*`"ComponentType`"*"
     $JSONList = Get-ChildItem $PathToDevRoot -Recurse -Filter "*.json"
     $i = 0
     foreach ($JSONFile in $JSONList) {
@@ -299,6 +303,10 @@ if (($TypeSelect -ge 1) -and ($TypeSelect -le 4)) {
     $ComponentObjectList | % {$ComponentIDNameHash.Add($_.Description.ID,$_.Description.UIName)}
     $ComponentIDStealthHash = @{}    
     $ComponentObjectList | % { if ([bool]($_.Custom.BonusDescriptions.Bonuses -match 'stealth')) {$ComponentIDStealthHash.Add($_.Description.ID,$true)} }
+    $ComponentIDJumpsHash = @{}    
+    $ComponentObjectList | % { if ([bool]($_.Custom.BonusDescriptions.Bonuses -match 'JumpCapacity')) {$ComponentIDJumpsHash.Add($_.Description.ID,$true)} }
+    $ComponentIDActEquipHash = @{}    
+    $ComponentObjectList | % { if ([bool]($_.Custom.BonusDescriptions.Bonuses -match 'Activatable')) {$ComponentIDActEquipHash.Add($_.Description.ID,$true)} }
     $ComponentIDMinRangeHash = @{}
     $ComponentObjectList | % { if ([bool]($_.Damage)) {$ComponentIDMinRangeHash.Add($_.Description.ID,$_.MinRange)} }
     $ComponentIDOptRangeHash = @{}
@@ -367,6 +375,8 @@ if (($TypeSelect -ge 1) -and ($TypeSelect -le 4)) {
         }
     }
     Get-Job | Remove-Job
+    #Cleanup Averages Job
+    
     
     foreach ($TDefFile in $TypeFileList) {
         $CheckMech = $false
@@ -407,15 +417,37 @@ $Sep
             $MechStats1 += "|| Armor: $($($TDef.Locations | Measure-Object -Property AssignedArmor -Sum).Sum) / $($($CDef.Locations | Measure-Object -Property MaxArmor -Sum).Sum)"
             Write-Host $MechStats1
             #Mech Parts
+            #More parts todo: arty [indirect], melee, ammo?, [activatable], turret, drivesys (vtol, lam, hover, etc.)
             $MechStealth = $false
-            $MechJump = $false
-            $MechParts1 = "   MechParts || Hardpoints | "
-            if (<#Do some stealth parsing#>) {}
-            $MechParts1 += "|| Stealth: $MechStealth"
-            do {$MechParts1 += " "} until ($MechParts1.Length -ge 54)
-            if (<#Do some jump parsing#>) {}
-            $MechParts1 += "|| Jumps: $MechJump"
+            $MechJumps = $false
+            $HardBallistic = 0
+            $HardMissile = 0
+            $HardEnergy = 0
+            $HardAntiPersonnel = 0
+            $HardOmni = 0
+            $HardText = ''
+            $MechAllEquip = $TDef.inventory + $CDef.FixedEquipment
+            $CDef.Locations.Hardpoints | ? {$_.WeaponMount} | % { if (-not $_.Omni) {iex ('$Hard' + $_.WeaponMount + ' += 1')} else {$HardOmni += 1} }
+            foreach ($HardType in $HardTypes) {
+                if ($HardType[0] -like 'A') {
+                    $HardShort = 'S'
+                } else {
+                    $HardShort = $HardType[0]
+                }
+                $HardTypeCount = iex ('$Hard'+$HardType)
+                if ($HardTypeCount -gt 0) {
+                    $HardText += " "+$HardShort+":"+$HardTypeCount
+                }
+            }
+            $MechParts1 = "   MechParts || Hardpoints |"+$HardText
             do {$MechParts1 += " "} until ($MechParts1.Length -ge 74)
+            if (@(Compare-Object $ComponentIDStealthHash $MechAllEquip.ComponentDefID -IncludeEqual -ExcludeDifferent).Count -gt 0) {$MechStealth = $true}
+            $MechParts1 += "|| Stealth: $MechStealth"
+            do {$MechParts1 += " "} until ($MechParts1.Length -ge 94)
+            if (@(Compare-Object $ComponentIDJumpsHash $MechAllEquip.ComponentDefID -IncludeEqual -ExcludeDifferent).Count -gt 0) {$MechJumps = $true}
+            $MechParts1 += "|| Jumps: $MechJumps"
+            do {$MechParts1 += " "} until ($MechParts1.Length -ge 114)
+            Write-Host $MechParts1
             #Class Stats
             [string]$MechClass = $ClassWeights.$($TDef.MechTags.items | ? {$ClassWeights.Keys -contains $_})
             $ClassStats1 = "  ClassStats || Class: $MechClass"
