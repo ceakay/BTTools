@@ -313,17 +313,17 @@ if (($TypeSelect -ge 1) -and ($TypeSelect -le 4)) {
     $ComponentObjectList | % { if ([bool]($_ -match 'SpecialMelee')) {$ComponentIDMeleeHash.Add($_.Description.ID,$false)} }
     $ComponentObjectList | % { if ([bool]($_.Custom.Category -match 'SpecialMelee')) {$ComponentIDMeleeHash.Add($_.Description.ID,$true)} }
     $ComponentIDMinRangeHash = @{}
-    $ComponentObjectList | % { if ([bool]($_.Custom.Category.CategoryID.Split('/' -eq 'w'))) {$ComponentIDMinRangeHash.Add($_.Description.ID,$_.MinRange)} }
+    $ComponentObjectList | ? {$_.Custom.Category.CategoryID} | % { if ([bool]($_.Custom.Category.CategoryID.Split('/')[0] -eq 'w')) {$ComponentIDMinRangeHash.Add($_.Description.ID,$_.MinRange)} }
     $ComponentIDMidRangeHash = @{}
-    $ComponentObjectList | % { if ([bool]($_.Custom.Category.CategoryID.Split('/' -eq 'w'))) {$ComponentIDMidRangeHash.Add($_.Description.ID,$_.RangeSplit)} }
+    $ComponentObjectList | ? {$_.Custom.Category.CategoryID} | % { if ([bool]($_.Custom.Category.CategoryID.Split('/')[0] -eq 'w')) {$ComponentIDMidRangeHash.Add($_.Description.ID,$_.RangeSplit)} }
     $ComponentIDMaxRangeHash = @{}
-    $ComponentObjectList | % { if ([bool]($_.Custom.Category.CategoryID.Split('/' -eq 'w'))) {$ComponentIDMaxRangeHash.Add($_.Description.ID,$_.MaxRange)} }
+    $ComponentObjectList | ? {$_.Custom.Category.CategoryID} | % { if ([bool]($_.Custom.Category.CategoryID.Split('/')[0] -eq 'w')) {$ComponentIDMaxRangeHash.Add($_.Description.ID,$_.MaxRange)} }
     $ComponentIDRatingHash = @{}
     $ComponentObjectList | % { if ([bool]($_.Custom.EngineCore.Rating)) {$ComponentIDRatingHash.Add($_.Description.ID,$_.Custom.EngineCore.Rating)} }
     $ComponentIDQuirkHash = @{}
-    $ComponentObjectList | % { if ([bool]($_.Custom.Category.CategoryID -match 'quirk')) {$ComponentIDQuirkHash.Add($_.Description.ID,$_.MinRange)} }
+    $ComponentObjectList | ? {$_.Custom.Category.CategoryID} | % { if ([bool]($_.Custom.Category.CategoryID -match 'quirk')) {$ComponentIDQuirkHash.Add($_.Description.ID,$_.Description.UIName)} }
     $ComponentIDWeaponHash = @{}
-    $ComponentObjectList | % { if ([bool]($_.Custom.Category.CategoryID.Split('/' -eq 'w'))) {$ComponentIDWeaponHash.Add($_.Description.ID,$_.Description.UIName)} }
+    $ComponentObjectList | ? {$_.Custom.Category.CategoryID} | % { if ([bool]($_.Custom.Category.CategoryID.Split('/')[0] -eq 'w')) {$ComponentIDWeaponHash.Add($_.Description.ID,$_.Description.UIName)} }
     
     #Collect WeightClass Averages
     $ClassAverages = [pscustomobject]@{}
@@ -402,6 +402,7 @@ if (($TypeSelect -ge 1) -and ($TypeSelect -le 4)) {
             $CDefFile = Get-ChildItem (Split-Path $TDefFile.DirectoryName -Parent) -Recurse -Filter "$($TDef.ChassisID)*"
             $CDefRaw = Get-Content $CDefFile.FullName -raw
             $CDef = $CDefRaw | ConvertFrom-Json
+            $MechAllEquip = $TDef.inventory + $CDef.FixedEquipment
             #Header
             Write-Host @"
    TypeDef: $($TDefFile.FullName)
@@ -436,7 +437,7 @@ $Sep
             $HardAntiPersonnel = 0
             $HardOmni = 0
             $HardText = ''
-            $MechAllEquip = $TDef.inventory + $CDef.FixedEquipment
+            #1 - hardpoints|stealth|jumps|DriveSys
             $CDef.Locations.Hardpoints | ? {$_.WeaponMount} | % { if (-not $_.Omni) {iex ('$Hard' + $_.WeaponMount + ' += 1')} else {$HardOmni += 1} }
             foreach ($HardType in $HardTypes) {
                 if ($HardType[0] -like 'A') {
@@ -451,13 +452,20 @@ $Sep
             }
             $MechParts1 = "   MechParts || Hardpoints |"+$HardText
             do {$MechParts1 += " "} until ($MechParts1.Length -ge 74)
-            if (@(Compare-Object $ComponentIDStealthHash $MechAllEquip.ComponentDefID -IncludeEqual -ExcludeDifferent).Count -gt 0) {$MechStealth = $true}
+            if (@(Compare-Object @($ComponentIDStealthHash.Keys) $MechAllEquip.ComponentDefID -IncludeEqual -ExcludeDifferent).Count -gt 0) {$MechStealth = $true}
             $MechParts1 += "|| Stealth: $MechStealth"
             do {$MechParts1 += " "} until ($MechParts1.Length -ge 94)
-            if (@(Compare-Object $ComponentIDJumpsHash $MechAllEquip.ComponentDefID -IncludeEqual -ExcludeDifferent).Count -gt 0) {$MechJumps = $true}
+            if (@(Compare-Object @($ComponentIDJumpsHash.Keys) $MechAllEquip.ComponentDefID -IncludeEqual -ExcludeDifferent).Count -gt 0) {$MechJumps = $true}
             $MechParts1 += "|| Jumps: $MechJumps"
             do {$MechParts1 += " "} until ($MechParts1.Length -ge 114)
             Write-Host $MechParts1
+            #2 - Quirk|Melee|Indir|ActEquip
+            @(Compare-Object @($ComponentIDQuirkHash.Keys) $MechAllEquip.ComponentDefID -IncludeEqual -ExcludeDifferent).InputObject | % {$MechQuirks += '| ' + $ComponentIDQuirkHash.$_ + ' '}
+            $MechParts2 = "             || Quirks $MechQuirks"
+            if ($MechParts2.Length -gt 73) {
+                $MechParts2 = $MechParts2.Substring(0,73)
+            }
+            do {$MechStats1 += " "} until ($MechStats1.Length -ge 74)
             #Class Stats
             [string]$MechClass = $ClassWeights.$($TDef.MechTags.items | ? {$ClassWeights.Keys -contains $_})
             $ClassStats1 = "  ClassStats || Class: $MechClass"
