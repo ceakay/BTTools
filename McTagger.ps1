@@ -1,6 +1,6 @@
 ﻿#Resize powershell window
 $Host.UI.RawUI.BufferSize = New-Object System.Management.Automation.Host.Size("2000","2000")
-$Host.UI.RawUI.WindowSize = New-Object System.Management.Automation.Host.Size("150","60")
+$Host.UI.RawUI.WindowSize = New-Object System.Management.Automation.Host.Size("150","81")
 
 #Average + Round function
 Function AvgRound($array)
@@ -307,14 +307,24 @@ if (($TypeSelect -ge 1) -and ($TypeSelect -le 4)) {
     $ComponentObjectList | % { if ([bool]($_.Custom.BonusDescriptions.Bonuses -match 'JumpCapacity')) {$ComponentIDJumpsHash.Add($_.Description.ID,$true)} }
     $ComponentIDActEquipHash = @{}    
     $ComponentObjectList | % { if ([bool]($_.Custom.BonusDescriptions.Bonuses -match 'Activatable')) {$ComponentIDActEquipHash.Add($_.Description.ID,$true)} }
+    $ComponentIDIndirHash = @{}    
+    $ComponentObjectList | % { if ([bool]($_.IndirectFireCapable -eq $true)) {$ComponentIDIndirHash.Add($_.Description.ID,$true)} }
+    $ComponentIDMeleeHash = @{}    
+    $ComponentObjectList | % { if ([bool]($_ -match 'SpecialMelee')) {$ComponentIDMeleeHash.Add($_.Description.ID,$false)} }
+    $ComponentObjectList | % { if ([bool]($_.Custom.Category -match 'SpecialMelee')) {$ComponentIDMeleeHash.Add($_.Description.ID,$true)} }
     $ComponentIDMinRangeHash = @{}
-    $ComponentObjectList | % { if ([bool]($_.Damage)) {$ComponentIDMinRangeHash.Add($_.Description.ID,$_.MinRange)} }
-    $ComponentIDOptRangeHash = @{}
-    $ComponentObjectList | % { if ([bool]($_.Damage)) {$ComponentIDOptRangeHash.Add($_.Description.ID,$_.RangeSplit[0])} }
+    $ComponentObjectList | % { if ([bool]($_.Custom.Category.CategoryID.Split('/' -eq 'w'))) {$ComponentIDMinRangeHash.Add($_.Description.ID,$_.MinRange)} }
+    $ComponentIDMidRangeHash = @{}
+    $ComponentObjectList | % { if ([bool]($_.Custom.Category.CategoryID.Split('/' -eq 'w'))) {$ComponentIDMidRangeHash.Add($_.Description.ID,$_.RangeSplit)} }
     $ComponentIDMaxRangeHash = @{}
-    $ComponentObjectList | % { if ([bool]($_.Damage)) {$ComponentIDMaxRangeHash.Add($_.Description.ID,$_.MaxRange)} }
+    $ComponentObjectList | % { if ([bool]($_.Custom.Category.CategoryID.Split('/' -eq 'w'))) {$ComponentIDMaxRangeHash.Add($_.Description.ID,$_.MaxRange)} }
     $ComponentIDRatingHash = @{}
     $ComponentObjectList | % { if ([bool]($_.Custom.EngineCore.Rating)) {$ComponentIDRatingHash.Add($_.Description.ID,$_.Custom.EngineCore.Rating)} }
+    $ComponentIDQuirkHash = @{}
+    $ComponentObjectList | % { if ([bool]($_.Custom.Category.CategoryID -match 'quirk')) {$ComponentIDQuirkHash.Add($_.Description.ID,$_.MinRange)} }
+    $ComponentIDWeaponHash = @{}
+    $ComponentObjectList | % { if ([bool]($_.Custom.Category.CategoryID.Split('/' -eq 'w'))) {$ComponentIDWeaponHash.Add($_.Description.ID,$_.Description.UIName)} }
+    
     #Collect WeightClass Averages
     $ClassAverages = [pscustomobject]@{}
     foreach ($Class in $ClassWeights.Keys) {
@@ -460,12 +470,12 @@ $Sep
             $ClassStats1 += "|| AvgArm: $($ClassAverages.$($TDef.MechTags.items | ? {$ClassWeights.Keys -contains $_}).AvgSetArmor) / $($ClassAverages.$($TDef.MechTags.items | ? {$ClassWeights.Keys -contains $_}).AvgMaxArmor)"
             Write-Host $ClassStats1
             Write-Host $Sep
-            #Fill remaining lines including 57
+            #Fill remaining lines including 76
             do {
                 $LineNum++
                 Write-Host ""
-            } until ($LineNum -eq 57)
-            #Describe Possible Actions Line 58
+            } until ($LineNum -eq 76)
+            #Describe Possible Actions Line 77
             switch ($Select) {
                 'write' {
                     Write-Host "Confirm Save To $($SaveTo[0])Def (Commit)"
@@ -477,9 +487,11 @@ $Sep
             }
             $Select = $null
             $SelectNumMod = $null
-            #Line 59
-            Write-Host "Use numbers to select Tag/Value | Use (Tag#.Value#) to specify both Tag and Value [i.e. 2.5] | (Write) to save file | (Finish) at anytime to move to next def"
-            #Get action - Line 60
+            #Line 78
+            Write-Host "Use numbers to select Tag/Value | (Tag#.Value#) to specify both. !Will commit and finish! [i.e. 2.5] | "
+            #Line 79
+            Write-Host "(Write) to save file | (WC) to repeat last tag and [$LastTag] | (Finish) at anytime to move to next def"
+            #Get action - Line 80
             [String]$Select = Read-Host -Prompt "Action"
             switch ($Select) {
                 'write' {}
@@ -491,6 +503,9 @@ $Sep
                     }
                 }
                 'commiterrorimjustbeinglazywhywouldyoutypethisin' {}
+                'wc' {
+                    #repeat last tag here
+                }
                 'finish' {$CheckMech = $true}
                 default {
                     try {
