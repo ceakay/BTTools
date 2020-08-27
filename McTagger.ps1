@@ -31,6 +31,13 @@ $HardTypes = @('Ballistic','Energy','Missile','AntiPersonnel','Omni')
 $ModtekCheck = $false
 do {
     Clear-Host
+    Write-Host @"
+Welcome to McTagger.
+This script is designed for adding custom mod flags individually to units.
+Use another script if your intention is to work batches of units, or even all of them. 
+Git: github.com/ceakay/BTTools
+"@
+    Write-Host ""
     Write-Host "Path to dev root must contain unique instance of ModTek.dll`r`n"
     $PathToDevRoot = Read-Host -Prompt "Enter path to search for dev root"
     # If the user didn't give us an absolute path, 
@@ -83,6 +90,7 @@ foreach ($JSONFile in $JSONList) {
 #Do tool setup
 $ToolSetupCheck = $false
 do {
+    <#Don't need this anymore
     #Prompt to skip where flags exist
     $FlagSkipCheck = $false
     do {
@@ -96,6 +104,7 @@ do {
             $FlagSkipCheck = $true
         }
     } until ($FlagSkipCheck)
+    #>
     #Prompt for Mechs/Vehicles/Gear
     $TypeSelectCheck = $false
     do {
@@ -191,8 +200,8 @@ Line 2+: Values
 `t`t`t MLA will append the entire structure as-is to the end of array
 `t`t 2) Multi-Line to Collection use a //UNIQUE// '_-MLC-_value' tag
 `t`t`t MLC will append the key/value pairs, over-writing any existing keys with the new value. 
-`t`t Once you've selected a tag, dump your multiline json structure into a plaintext .txt file with of the same name.
-`t`t`t (Example tag/filename) Tag: '_-MLA-_BFG4Everyone'; Filename: '_-MLA-_BFG4Everyone.txt'
+`t`t Once you've selected a tag, dump your multiline json structure into a json file with of the same name.
+`t`t`t (Example tag/filename) Tag: '_-MLA-_BFG4Everyone'; Filename: '_-MLA-_BFG4Everyone.json'
 
 ==================================
 "@
@@ -453,7 +462,7 @@ $Sep
             $MechEngine = @($MechEngine -split '\s+')[0]
             $MechEngine = [int]([regex]::Matches($MechEngine,'[0-9]{3}').Value)
             try {[int]$MechSpeed = $MechEngine / $CDef.Tonnage} catch {Write-Error "$MechEngine | $($CDefFile.FullName)"}
-            $MechStats1 += "|| Speed: $($CDef.Tonnage)"
+            $MechStats1 += "|| Speed: $MechSpeed"
             do {$MechStats1 += " "} until ($MechStats1.Length -ge 114)
             $MechStats1 += "|| Armor: $($($TDef.Locations | Measure-Object -Property AssignedArmor -Sum).Sum) / $($($CDef.Locations | Measure-Object -Property MaxArmor -Sum).Sum)"
             Write-Host $MechStats1; $LineNum++
@@ -592,7 +601,7 @@ $Sep
                 [ref]$ValueTableRow = 0; Import-Csv -path $TagFile | ft @{ N="Value"; E={"{0}" -f ++$ValueTableRow.value}; A="right"},*
                 $LineNum += $ValueTableRow.Value+4
             } else {
-                $TagTable = @{}; [ref]$TagTableRow = 1; $KeysList | % {$TagTable.Add($TagTableRow.Value,$_); $TagTableRow.Value++}; $TagTable.GetEnumerator() | Sort-Object -property Name | Format-Table @{L='Tag';E={$_.Name}},@{L='';E={$_.Value}}
+                $TagTable = @{}; [ref]$TagTableRow = 1; $(Get-Content $TagFile)[0].Split(',') | % {$TagTable.Add($TagTableRow.Value,$_); $TagTableRow.Value++}; $TagTable.GetEnumerator() | Sort-Object -property Name | Format-Table @{L='Tag';E={$_.Name}},@{L='';E={$_.Value}}
                 $LineNum += $TagTableRow.Value+4
             }
             #Fill remaining lines including 76
