@@ -158,7 +158,7 @@ Selected Type: $TypeSelectText
         $ToolSetupCheck = $true
     }
 } until ($ToolSetupCheck)
-
+al
 #Do Config Confirm
 $ConfigConfimCheck = $false
 do {
@@ -291,10 +291,12 @@ if (($TypeSelect -ge 1) -and ($TypeSelect -le 4)) {
     foreach ($JSONFile in $JSONList) {
         Write-Progress -Activity "Collecting Components" -Status "Scanning $($i+1) of $($JSONList.Count) JSONs found."
         $JSONRaw = Get-Content $JSONFile.FullName -Raw
-        if ($JSONRaw -like $ComponentFilter) {
-            try {
-                $ComponentObjectList += $($JSONRaw | ConvertFrom-Json)
-            } catch { Write-Host "Malformed JSON: $JSONFile" }
+        if ($JSONFile.FullName -notmatch 'MechEngineer') {
+            if ($JSONRaw -like $ComponentFilter) {
+                try {
+                    $ComponentObjectList += $($JSONRaw | ConvertFrom-Json)
+                } catch { Write-Host "Malformed JSON: $JSONFile" }
+            }
         }
         $i++
     }
@@ -324,6 +326,18 @@ if (($TypeSelect -ge 1) -and ($TypeSelect -le 4)) {
     $ComponentObjectList | ? {$_.Custom.Category.CategoryID} | % { if ([bool]($_.Custom.Category.CategoryID -match 'quirk')) {$ComponentIDQuirkHash.Add($_.Description.ID,$_.Description.UIName)} }
     $ComponentIDWeaponHash = @{}
     $ComponentObjectList | ? {$_.Custom.Category.CategoryID} | % { if ([bool]($_.Custom.Category.CategoryID.Split('/')[0] -eq 'w')) {$ComponentIDWeaponHash.Add($_.Description.ID,$_.Description.UIName)} }
+    $ComponentIDDriveHash = @{
+        'PA_Legs' = 'PowerArmor'
+        'emod_armorslots_LAM' = 'LAM'
+        'Gear_Hover_Left' = 'Hover'
+        'Gear_Armored_Hover_Left' = 'Arm. Hover'
+        'Gear_VTOL' = 'VTOL'
+        'Gear_VTOL_Reinforced' = 'Arm. VTOL'
+        'Gear_Tracked_Left' = 'Tracked'
+        'Gear_Armored_Tracked_Left' = 'Arm. Tracked'
+        'Gear_Wheeled_Left' = 'Wheeled'
+        'Gear_Armored_Wheeled_Left' = 'Arm. Wheeled'
+    }
     
     #Collect WeightClass Averages
     $ClassAverages = [pscustomobject]@{}
@@ -388,7 +402,14 @@ if (($TypeSelect -ge 1) -and ($TypeSelect -le 4)) {
     #Cleanup Averages Job
     
     
-    foreach ($TDefFile in $TypeFileList) {
+    for ($m=0; $m -lt $TypeFileList.Count; $m++) {
+        $TDefFile = $TypeFileList[$m]
+        $TDefRaw = Get-Content $TDefFile.FullName -raw
+        $TDef = $TDefRaw | ConvertFrom-Json
+        $CDefFile = Get-ChildItem (Split-Path $TDefFile.DirectoryName -Parent) -Recurse -Filter "$($TDef.ChassisID)*"
+        $CDefRaw = Get-Content $CDefFile.FullName -raw
+        $CDef = $CDefRaw | ConvertFrom-Json
+        $MechAllEquip = $TDef.inventory + $CDef.FixedEquipment
         $CheckMech = $false
         #Reset Tag/Value display
         $DisplayValue = $false
@@ -398,12 +419,6 @@ if (($TypeSelect -ge 1) -and ($TypeSelect -le 4)) {
         Do {
             $LineNum = 0
             Write-Host $Sep
-            $TDefRaw = Get-Content $TDefFile.FullName -raw
-            $TDef = $TDefRaw | ConvertFrom-Json
-            $CDefFile = Get-ChildItem (Split-Path $TDefFile.DirectoryName -Parent) -Recurse -Filter "$($TDef.ChassisID)*"
-            $CDefRaw = Get-Content $CDefFile.FullName -raw
-            $CDef = $CDefRaw | ConvertFrom-Json
-            $MechAllEquip = $TDef.inventory + $CDef.FixedEquipment
             #Header
             Write-Host @"
    TypeDef: $($TDefFile.FullName)
@@ -423,7 +438,7 @@ $Sep
             if (!$MechEngine) { $Engine = $($CDef.FixedEquipment -match 'emod_engine_[0-9]{3}').ComponentDefID }
             $MechEngine = @($MechEngine -split '\s+')[0]
             $MechEngine = [int]([regex]::Matches($MechEngine,'[0-9]{3}').Value)
-            [int]$MechSpeed = $MechEngine / $CDef.Tonnage
+            try {[int]$MechSpeed = $MechEngine / $CDef.Tonnage} catch {Write-Error "$MechEngine | $($CDefFile.FullName)"}
             $MechStats1 += "|| Speed: $($CDef.Tonnage)"
             do {$MechStats1 += " "} until ($MechStats1.Length -ge 114)
             $MechStats1 += "|| Armor: $($($TDef.Locations | Measure-Object -Property AssignedArmor -Sum).Sum) / $($($CDef.Locations | Measure-Object -Property MaxArmor -Sum).Sum)"
@@ -464,7 +479,12 @@ $Sep
             $MechParts1 += "|| Jumps: $MechJumps"
             do {$MechParts1 += " "} until ($MechParts1.Length -ge 114)
             #DriveSys
+            $DriveCompare = @(Compare-Object @($ComponentIDDriveHash.Keys) $MechAllEquip.ComponentDefID -IncludeEqual -ExcludeDifferent).InputObject
+            if ($DriveCompare.Count -gt 0) {$MechDrive = $ComponentIDDriveHash.$DriveCompare} else {$MechDrive = 'Bipedal'}
             $MechParts1 += "|| DriveSys: $MechDrive"
+            if ($MechParts1.Length -gt 150) {
+                $MechParts1 = $MechParts1.Substring(0,150)
+            }
             Write-Host $MechParts1; $LineNum++
             #2 - Quirk|Melee|Indir|ActEquip
             @(Compare-Object @($ComponentIDQuirkHash.Keys) $MechAllEquip.ComponentDefID -IncludeEqual -ExcludeDifferent).InputObject | % {$MechQuirks += '| ' + $ComponentIDQuirkHash.$_ + ' '}
@@ -481,6 +501,9 @@ $Sep
             do {$MechParts2 += " "} until ($MechParts2.Length -ge 114)
             if (@(Compare-Object @($ComponentIDActEquipHash.Keys) $MechAllEquip.ComponentDefID -IncludeEqual -ExcludeDifferent).Count -gt 0) {
                 @($(Compare-Object @($ComponentIDActEquipHash.Keys) $MechAllEquip.ComponentDefID -IncludeEqual -ExcludeDifferent).InputObject) | % {$MechActEquip += '| '+ $ComponentIDActEquipHash.$_ +' '}
+            }
+            if ($MechActEquip -eq '') {
+                $MechActEquip = "| None"
             }
             $MechParts2 += "|| Actives $MechActEquip"
             if ($MechParts2.Length -gt 150) {
@@ -499,6 +522,14 @@ $Sep
             $ClassStats1 += "|| AvgArm: $($ClassAverages.$($TDef.MechTags.items | ? {$ClassWeights.Keys -contains $_}).AvgSetArmor) / $($ClassAverages.$($TDef.MechTags.items | ? {$ClassWeights.Keys -contains $_}).AvgMaxArmor)"
             Write-Host $ClassStats1; $LineNum++
             Write-Host $Sep; $LineNum++
+            #Tag/Value Table
+            if ($DisplayValue) {
+                [ref]$ValueTableRow = 0; Import-Csv -path $TagFile | ft @{ N="Value"; E={"{0}" -f ++$ValueTableRow.value}; A="right"},*
+                $LineNum += $ValueTableRow.Value+4
+            } else {
+                $TagTable = @{}; [ref]$TagTableRow = 1; $KeysList | % {$TagTable.Add($TagTableRow.Value,$_); $TagTableRow.Value++}; $TagTable.GetEnumerator() | Sort-Object -property Name | Format-Table @{L='Tag';E={$_.Name}},@{L='';E={$_.Value}}
+                $LineNum += $TagTableRow.Value+4
+            }
             #Fill remaining lines including 76
             do {
                 $LineNum++
@@ -512,12 +543,19 @@ $Sep
                 }
                 'commit' {Write-Host "$($SaveTo[0])Def Saved"}
                 'commiterrorimjustbeinglazywhywouldyoutypethisin' {Write-Host "Need to (Write) before (Commit)"}
-                default {Write-Host ""; $LineNum++}
+                default {
+                    if (!$SelectError) {
+                        Write-Host ""; $LineNum++
+                    } else {
+                        Write-Host "Error: $SelectError"; $LineNum++
+                    }
+                }
             }
+            $SelectError = $null
             $Select = $null
             $SelectNumMod = $null
             #Line 78
-            Write-Host "Use numbers to select Tag/Value | (Tag#.Value#) to specify both. !Will commit and finish! [i.e. 2.5] | "
+            Write-Host "Use numbers to select Tag/Value | (Tag#.Value#) to specify both. !Will commit and finish! [i.e. 2.5]"
             #Line 79
             Write-Host "(Write) to save file | (WC) to repeat last tag and [$LastTag] | (Finish) at anytime to move to next def"
             #Get action - Line 80
@@ -559,7 +597,7 @@ $Sep
                                 $DisplayValue = $false
                             }
                         }
-                    } catch {}    
+                    } catch {$SelectError = 'Invalid Input'}    
                 }
             }
             $Save1 = $false
