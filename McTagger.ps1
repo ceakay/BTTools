@@ -338,7 +338,21 @@ if (($TypeSelect -ge 1) -and ($TypeSelect -le 4)) {
         'Gear_Wheeled_Left' = 'Wheeled'
         'Gear_Armored_Wheeled_Left' = 'Arm. Wheeled'
     }
-    
+    $ComponentMountHash = @{
+        'Head' = 'HD'
+        'CenterTorso' = 'CT'
+        'LeftTorso' = 'LT'
+        'RightTorso' = 'RT'
+        'LeftArm' = 'LA'
+        'RightArm' = 'RA'
+        'LeftLeg' = 'LL'
+        'RightLeg' = 'RL'
+        'Front' = 'VF'
+        'Rear' = 'VB'
+        'Left' = 'VL'
+        'Right' = 'VR'
+        'Turret' = 'VT'
+    }
     #Collect WeightClass Averages
     $ClassAverages = [pscustomobject]@{}
     foreach ($Class in $ClassWeights.Keys) {
@@ -522,6 +536,42 @@ $Sep
             $ClassStats1 += "|| AvgArm: $($ClassAverages.$($TDef.MechTags.items | ? {$ClassWeights.Keys -contains $_}).AvgSetArmor) / $($ClassAverages.$($TDef.MechTags.items | ? {$ClassWeights.Keys -contains $_}).AvgMaxArmor)"
             Write-Host $ClassStats1; $LineNum++
             Write-Host $Sep; $LineNum++
+            
+            #Equipment List
+            Write-Host 'Equipment List'; $LineNum++
+            Write-Host $Sep; $LineNum++
+            $EquipListColSizeRaw = $MechAllEquip.ComponentDefID.count / 4
+            [int]$EquipListColSize = $EquipListColSizeRaw
+            $MountList = @{}
+            $MountList.Add('ColA',@($MechAllEquip.MountedLocation[0..$($EquipListColSize-1)]))
+            $MountList.Add('ColB',@($MechAllEquip.MountedLocation[$($EquipListColSize)..$($EquipListColSize *2 -1)]))
+            $MountList.Add('ColC',@($MechAllEquip.MountedLocation[$($EquipListColSize *2)..$($EquipListColSize *3 -1)]))
+            $MountList.Add('ColD',@($MechAllEquip.MountedLocation[$($EquipListColSize *3)..$($MechAllEquip.ComponentDefID.count -1)]))
+            $EquipmentList = @{}
+            $EquipmentList.Add('ColA',@($MechAllEquip.ComponentDefID[0..$($EquipListColSize-1)]))
+            $EquipmentList.Add('ColB',@($MechAllEquip.ComponentDefID[$($EquipListColSize)..$($EquipListColSize *2 -1)]))
+            $EquipmentList.Add('ColC',@($MechAllEquip.ComponentDefID[$($EquipListColSize *2)..$($EquipListColSize *3 -1)]))
+            $EquipmentList.Add('ColD',@($MechAllEquip.ComponentDefID[$($EquipListColSize *3)..$($MechAllEquip.ComponentDefID.count -1)]))
+            $ColNames = @('ColA','ColB','ColC','ColD')
+            for ($n=0; $n -lt $EquipListColSize; $n++) {
+                $EquipRowText = "|"
+                $EquipColWidth = 35
+                $ColNames | % {
+                    $EquipRowText += try {iex ('$ComponentMountHash.$($MountList.'+$_+'['+$n+'])')} catch {}
+                    $EquipRowText += "| "
+                    $EquipRowText += try {iex ('$ComponentIDNameHash.$($EquipmentList.'+$_+'['+$n+'])')} catch {}
+                    if ($EquipRowText.Length -gt $($EquipColWidth-1)) {
+                        $EquipRowText = $EquipRowText.Substring(0,$($EquipColWidth-1))
+                    }
+                    do {$EquipRowText += " "} until ($EquipRowText.Length -ge $EquipColWidth)
+                    $EquipRowText += "|"
+                    $EquipColWidth += 35
+                }
+                $EquipRowText
+            }
+            $LineNum += $EquipListColSize
+            Write-Host $Sep; $LineNum++
+
             #Tag/Value Table
             if ($DisplayValue) {
                 [ref]$ValueTableRow = 0; Import-Csv -path $TagFile | ft @{ N="Value"; E={"{0}" -f ++$ValueTableRow.value}; A="right"},*
@@ -603,5 +653,7 @@ $Sep
             $Save1 = $false
         } until ($CheckMech)
     }
+    Clear-Host
+    Write-Host 'Done'
 }
 #Elseif gear processing
