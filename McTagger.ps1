@@ -541,7 +541,7 @@ $Sep
             Write-Host 'Equipment List'; $LineNum++
             Write-Host $Sep; $LineNum++
             $EquipListColSizeRaw = $MechAllEquip.ComponentDefID.count / 4
-            [int]$EquipListColSize = $EquipListColSizeRaw
+            [int]$EquipListColSize = 0.499+$EquipListColSizeRaw
             $MountList = @{}
             $MountList.Add('ColA',@($MechAllEquip.MountedLocation[0..$($EquipListColSize-1)]))
             $MountList.Add('ColB',@($MechAllEquip.MountedLocation[$($EquipListColSize)..$($EquipListColSize *2 -1)]))
@@ -555,24 +555,39 @@ $Sep
             $ColNames = @('ColA','ColB','ColC','ColD')
             for ($n=0; $n -lt $EquipListColSize; $n++) {
                 $EquipRowText = "|"
-                $EquipColWidth = 35
+                $EquipColWidth = 37
                 $ColNames | % {
                     $EquipRowText += try {iex ('$ComponentMountHash.$($MountList.'+$_+'['+$n+'])')} catch {}
                     $EquipRowText += "| "
-                    $EquipRowText += try {iex ('$ComponentIDNameHash.$($EquipmentList.'+$_+'['+$n+'])')} catch {}
+                    $EquipListItem = iex ('$($EquipmentList.'+$_+'['+$n+'])')
+                    $EquipRowText += try {$ComponentIDNameHash.$EquipListItem} catch {}
+                    if ([bool]$(try{$ComponentIDWeaponHash.$EquipListItem} catch {$false})) {
+                        $EquipRowText += try {' ['+$ComponentIDMinRangeHash.$EquipListItem+','+$ComponentIDMidRangeHash.$EquipListItem[0]+','+$ComponentIDMaxRangeHash.$EquipListItem+']'} catch {}
+                    }
                     if ($EquipRowText.Length -gt $($EquipColWidth-1)) {
                         $EquipRowText = $EquipRowText.Substring(0,$($EquipColWidth-1))
                     }
                     do {$EquipRowText += " "} until ($EquipRowText.Length -ge $EquipColWidth)
                     $EquipRowText += "|"
-                    $EquipColWidth += 35
+                    $EquipColWidth += 37
                 }
-                $EquipRowText
+                $EquipRowTextArray = $EquipRowText.Split('[')
+                for ($i=0; $i -lt $EquipRowTextArray.Count; $i++) {
+                    if ($i -gt 0) {
+                        $EquipRowTextArraySub = $($EquipRowTextArray[$i].Split("|"))
+                        Write-Host $("[" + $EquipRowTextArraySub[0]) -NoNewline -ForegroundColor Yellow 
+                        $EquipRowTextArraySub[1..$($EquipRowTextArraySub.Count -1)] | % {Write-Host $("|" + $_) -NoNewline}
+                    } else {
+                        Write-Host $($EquipRowTextArray[$i]) -NoNewline
+                    }
+                }
+                Write-Host $('')
             }
             $LineNum += $EquipListColSize
             Write-Host $Sep; $LineNum++
 
             #Tag/Value Table
+            ##THIS NEEDS TO BE REWORKED. HASHTABLES AREN'T ORDERED.
             if ($DisplayValue) {
                 [ref]$ValueTableRow = 0; Import-Csv -path $TagFile | ft @{ N="Value"; E={"{0}" -f ++$ValueTableRow.value}; A="right"},*
                 $LineNum += $ValueTableRow.Value+4
