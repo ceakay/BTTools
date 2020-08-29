@@ -194,6 +194,10 @@ Line 2+: Values
 `t To add the TagName to an array/list, use '_-Array-_' in line 2. Path/To should include the array's name. 
 `t`t (Example) Line1: 'mech/MechTags/items/unit_legendary'; Line2: '_-Array-_'
 `t`t`t Will add 'unit_legendary' to MechTags/Items in MechDef
+
+==================================
+"@
+<# Not Yet Implemented
 `t To add a multi-line entries, there are two options:
 `t`t It is recommended you validate the JSON structure before hand, script will hard stop on invalid structures. i.e. https://jsonlint.com
 `t`t 1) Multi-Line to Array use a //UNIQUE// '_-MLA-_value' tag
@@ -202,9 +206,7 @@ Line 2+: Values
 `t`t`t MLC will append the key/value pairs, over-writing any existing keys with the new value. 
 `t`t Once you've selected a tag, dump your multiline json structure into a json file with of the same name.
 `t`t`t (Example tag/filename) Tag: '_-MLA-_BFG4Everyone'; Filename: '_-MLA-_BFG4Everyone.json'
-
-==================================
-"@
+#>
         Read-Host -Prompt "Enter to continue"
         Clear-Host
         $ConfigHelp = $false
@@ -611,12 +613,7 @@ $Sep
             } until ($LineNum -eq 76)
             #Describe Possible Actions Line 77
             switch ($Select) {
-                'write' {
-                    Write-Host "Confirm Save To $($SaveTo[0])Def (Commit)"; $LineNum++
-                    $Save1 = $true
-                }
-                'commit' {Write-Host "$($SaveTo[0])Def Saved"}
-                'commiterrorimjustbeinglazywhywouldyoutypethisin' {Write-Host "Need to (Write) before (Commit)"}
+                'write' {Write-Host "$($SaveTo[0])Def Saved"}
                 default {
                     if (!$SelectError) {
                         Write-Host ""; $LineNum++
@@ -631,23 +628,15 @@ $Sep
             #Line 78
             Write-Host "Use numbers to select Tag/Value | (Tag#.Value#) to specify both. !Will commit and finish! [i.e. 2.5]"
             #Line 79
-            Write-Host "(Write) to save file | (WC) to repeat last tag and [$LastTag] | (Finish) at anytime to move to next def"
+            Write-Host "(Write) to save file | (RW) to repeat last tag and [$LastTag] | (Done) at anytime to move to next def"
             #Get action - Line 80
             [String]$Select = Read-Host -Prompt "Action"
             switch ($Select) {
                 'write' {}
-                'commit' {
-                    if ($Save1) {
-                        #do write here
-                    } else {
-                        $Select = 'commiterrorimjustbeinglazywhywouldyoutypethisin'
-                    }
-                }
-                'commiterrorimjustbeinglazywhywouldyoutypethisin' {}
-                'wc' {
+                'rw' {
                     #repeat last tag here
                 }
-                'finish' {$CheckMech = $true}
+                'done' {$CheckMech = $true}
                 default {
                     try {
                         $SelectNum = $Select / 1
@@ -678,6 +667,6 @@ $Sep
         } until ($CheckMech)
     }
     Clear-Host
-    Write-Host 'Done'
+    Write-Host 'Done!'
 }
 #Elseif gear processing
