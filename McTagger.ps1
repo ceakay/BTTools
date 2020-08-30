@@ -705,10 +705,12 @@ $Sep
                             }
                         } else {
                             $EZTag = @($Select.Split('.'))
-                            if (($EZTag.Count -ne 2) -or ($EZTag[0] -le 0)) {
+                            if (($EZTag.Count -ne 2) -or ($EZTag[0] -le 0) -or ($EZTag[1] -le 0)) {
                                 #Throw error
+                                $SelectError = "Invalid Input: $Select"
                             } else  {
                                 #do eztag work
+                                $ChangeHash += @{$($EZTag[0] -1)=$($EZTag[1] -1)}
                                 #Reset displayvalue
                                 $DisplayValue = $false
                             }
@@ -734,7 +736,7 @@ $Sep
                     iex $ChangeTagPathFull | Add-Member -NotePropertyName $ChangeTag -NotePropertyValue $ChangeValue -Force
                 }
             }
-
+            #write to file
             $Save1 = $false
         } until ($CheckMech)
     }
