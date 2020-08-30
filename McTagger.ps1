@@ -3,14 +3,39 @@ $Host.UI.RawUI.BufferSize = New-Object System.Management.Automation.Host.Size("2
 $Host.UI.RawUI.WindowSize = New-Object System.Management.Automation.Host.Size("150","80")
 
 #Average + Round function
-Function AvgRound($array)
-{
+Function AvgRound($array) {
     $RunningTotal = 0
     foreach($i in $array){
         $RunningTotal += $i
     }
     return [math]::Round(([decimal]($RunningTotal) / [decimal]($array.Length)))
 }
+
+Function CSVCol {
+    [CmdletBinding(DefaultParameterSetName = 'Default')]
+    param(
+        [Parameter(Position=0,Mandatory=$true)]
+        [string]$File,
+        [Parameter(Position=1,Mandatory=$true)]
+        [int]$Col,
+        [Parameter(Position=2)]
+        [string]$Delimiter = ",",
+        [Parameter(Mandatory, ParameterSetName = 'AsHashtable')]
+        [switch]$AsHashtable,
+        [Parameter(Mandatory, ParameterSetName = 'TitleOnly')]
+        [switch]$TitleOnly
+    )
+    $CSV = Import-Csv -Path $File -Delimiter $Delimiter
+    $ColPropNames = $(Get-Content $File)[0].Split($Delimiter)
+    switch ($PSCmdlet.ParameterSetName) {
+        'AsHashtable' { return [pscustomobject]@{ $($ColPropNames[$Col]) = @($CSV.$($ColPropNames[$Col])) } }
+        'TitleOnly' { return $ColPropNames[$Col] }
+        default { return $CSV.$($ColPropNames[$Col]) }
+    }
+}
+
+#Initialize Vars
+$ValuesOnly = $false
 
 #Declare class weights hash
 $ClassWeights = @{
@@ -23,8 +48,6 @@ $ClassWeights = @{
 
 #Hardpoint Types
 $HardTypes = @('Ballistic','Energy','Missile','AntiPersonnel','Omni')
-
-#Sorted array weights
 
 #Tool Pre-setup
 #Prompt for path to dev root directory
@@ -189,10 +212,10 @@ Line 1: Type/Path/To/TagName
 Line 2+: Values
 `t List possible values from line 2 onwards. 
 `t To prompt for a value, use '_-Value-_' in line 2.
-`t`t (Example) Line1: 'Mech/Description/Cost' Line2: '_-Value-_'
-`t`t`t Will prompt for a value, and add '"Cost": YourValue' to Mech/Description
+`t`t (Example) Line1: 'Type/Description/Cost' Line2: '_-Value-_'
+`t`t`t Will prompt for a value, and add '"Cost": YourValue' to Type/Description
 `t To add the TagName to an array/list, use '_-Array-_' in line 2. Path/To should include the array's name. 
-`t`t (Example) Line1: 'mech/MechTags/items/unit_legendary'; Line2: '_-Array-_'
+`t`t (Example) Line1: 'Type/MechTags/items/unit_legendary'; Line2: '_-Array-_'
 `t`t`t Will add 'unit_legendary' to MechTags/Items in MechDef
 
 ==================================
@@ -215,6 +238,7 @@ Line 2+: Values
     #Parse TagConfig.csv
     $TagFile = Join-Path -Path $PSScriptRoot -ChildPath "TagConfig.csv"
     $CSVRawObject = Import-Csv -path $TagFile
+    $ConfigCSVTags = $(Get-Content $TagFile)[0].Split(',')
     $KeysList = @($CSVRawObject | Get-Member -MemberType Properties).Name
     $KeysObject = [pscustomobject]@{}
     foreach ($Key in $KeysList) {
@@ -235,6 +259,10 @@ Line 2+: Values
 } until ($ConfigConfimCheck)
 
 #count number of Keys. if only 1, set ($ValuesOnly -eq $true)
+if ($ConfigCSVTags.Count -eq 1) {
+    $SelectTag = 0
+    $ValuesOnly -eq $true
+}
 
 #Filter and Gather objects
 Clear-Host
@@ -423,9 +451,11 @@ if (($TypeSelect -ge 1) -and ($TypeSelect -le 4)) {
             $ClassAverages.$Class | Add-Member -NotePropertyName AvgEngine -NotePropertyValue (AvgRound(@($ClassAverages.$Class.AllEngine)))
         }
     }
-    Get-Job | Remove-Job
     #Cleanup Averages Job
+    Get-Job | Remove-Job
     
+    #Clear Progressbars
+    Write-Progress -Activity Done! -Completed
     
     for ($m=0; $m -lt $TypeFileList.Count; $m++) {
         $TDefFile = $TypeFileList[$m]
@@ -435,6 +465,11 @@ if (($TypeSelect -ge 1) -and ($TypeSelect -le 4)) {
         $CDefRaw = Get-Content $CDefFile.FullName -raw
         $CDef = $CDefRaw | ConvertFrom-Json
         $MechAllEquip = $TDef.inventory + $CDef.FixedEquipment
+        #Init new defs
+        $NewTDef = $TDef | Select-Object *
+        $NewCDef = $CDef | Select-Object *
+        $ChangeHash = @{}
+
         $CheckMech = $false
         #Reset Tag/Value display
         $DisplayValue = $false
@@ -573,7 +608,7 @@ $Sep
                     $EquipListItem = iex ('$($EquipmentList.'+$_+'['+$n+'])')
                     $EquipRowText += try {$ComponentIDNameHash.$EquipListItem} catch {}
                     if ([bool]$(try{$ComponentIDWeaponHash.$EquipListItem} catch {$false})) {
-                        $EquipRowText += try {' ['+$ComponentIDMinRangeHash.$EquipListItem+','+$ComponentIDMidRangeHash.$EquipListItem[0]+','+$ComponentIDMaxRangeHash.$EquipListItem+']'} catch {}
+                        $EquipRowText += try {' {'+$ComponentIDMinRangeHash.$EquipListItem+','+$ComponentIDMidRangeHash.$EquipListItem[0]+','+$ComponentIDMaxRangeHash.$EquipListItem+']'} catch {}
                     }
                     if ($EquipRowText.Length -gt $($EquipColWidth-1)) {
                         $EquipRowText = $EquipRowText.Substring(0,$($EquipColWidth-1))
@@ -582,7 +617,7 @@ $Sep
                     $EquipRowText += "|"
                     $EquipColWidth += 37
                 }
-                $EquipRowTextArray = $EquipRowText.Split('[')
+                $EquipRowTextArray = $EquipRowText.Split('{')
                 for ($i=0; $i -lt $EquipRowTextArray.Count; $i++) {
                     if ($i -gt 0) {
                         $EquipRowTextArraySub = $($EquipRowTextArray[$i].Split("|"))
@@ -597,13 +632,19 @@ $Sep
             $LineNum += $EquipListColSize
             Write-Host $Sep; $LineNum++
 
+            #Describe changes made
+            $ChangeHeader = 'Type changes to be made:' 
+            do {$ChangeHeader += " "} until ($ChangeHeader.Length -ge 74)
+            $ChangeHeader += '|Chassis changes to be made:'
+            Write-Host $ChangeHeader;$LineNum++
+            
             #Tag/Value Table
-            ##THIS NEEDS TO BE REWORKED. HASHTABLES AREN'T ORDERED.
             if ($DisplayValue) {
-                [ref]$ValueTableRow = 0; Import-Csv -path $TagFile | ft @{ N="Value"; E={"{0}" -f ++$ValueTableRow.value}; A="right"},*
+                $TagValues = CSVCol $TagFile $SelectTag
+                $ValueTable = @{}; [ref]$ValueTableRow = 1; $TagValues | % {$ValueTable.Add($ValueTableRow.Value,$_); $ValueTableRow.Value++}; $ValueTable.GetEnumerator() | Sort-Object -property Name | Format-Table @{L='Value';E={$_.Name}},@{L=$(CSVCol $TagFile $SelectTag -TitleOnly);E={$_.Value}}
                 $LineNum += $ValueTableRow.Value+4
             } else {
-                $TagTable = @{}; [ref]$TagTableRow = 1; $(Get-Content $TagFile)[0].Split(',') | % {$TagTable.Add($TagTableRow.Value,$_); $TagTableRow.Value++}; $TagTable.GetEnumerator() | Sort-Object -property Name | Format-Table @{L='Tag';E={$_.Name}},@{L='';E={$_.Value}}
+                $TagTable = @{}; [ref]$TagTableRow = 1; $ConfigCSVTags | % {$TagTable.Add($TagTableRow.Value,$_); $TagTableRow.Value++}; $TagTable.GetEnumerator() | Sort-Object -property Name | Format-Table @{L='Tag';E={$_.Name}},@{L='';E={$_.Value}}
                 $LineNum += $TagTableRow.Value+4
             }
             #Fill remaining lines including 76
@@ -626,13 +667,18 @@ $Sep
             $Select = $null
             $SelectNumMod = $null
             #Line 78
-            Write-Host "Use numbers to select Tag/Value | (Tag#.Value#) to specify both. !Will commit and finish! [i.e. 2.5]"
+            Write-Host "Use numbers to select Tag/Value | (Tag#.Value#) to specify both. Will also Write and Done! [i.e. '2.5'; If working with only 1 Tag, use '1.x'] "
             #Line 79
-            Write-Host "(Write) to save file | (RW) to repeat last tag and [$LastTag] | (Done) at anytime to move to next def"
+            Write-Host "(Write) to commit changes to file | (RW) to repeat last tag and commit | (Clear) to clear all stored changes | (Done) at anytime to move to next def"
             #Get action - Line 80
             [String]$Select = Read-Host -Prompt "Action"
             switch ($Select) {
-                'write' {}
+                'write' {
+                    $LastCommitHash = $ChangeHash.Clone()
+                }
+                'clear' {
+                    $ChangeHash = @{}
+                }
                 'rw' {
                     #repeat last tag here
                 }
@@ -643,15 +689,22 @@ $Sep
                         if ($SelectNum -is [int]) {
                             if ($DisplayValue) {
                                 #Do values work
+                                $SelectValue = $SelectNum -1
+                                if (!$ChangeHash.$SelectTag) {
+                                    $ChangeHash += @{$SelectTag=$SelectValue}
+                                } else {
+                                    $ChangeHash.$SelectTag = $SelectValue
+                                }
                                 if ($ValuesOnly -eq $false) {
                                     $DisplayValue = (-not $DisplayValue)
                                 }
                             } else {
                                 #Do tags work
+                                $SelectTag = $SelectNum -1
                                 $DisplayValue = (-not $DisplayValue)
                             }
                         } else {
-                            $EZTag = @($Select -split "\.")
+                            $EZTag = @($Select.Split('.'))
                             if (($EZTag.Count -ne 2) -or ($EZTag[0] -le 0)) {
                                 #Throw error
                             } else  {
@@ -663,6 +716,25 @@ $Sep
                     } catch {$SelectError = 'Invalid Input'}    
                 }
             }
+            #Make changes to $newobj if changes exist
+            if (-not !$($ChangeHash.Keys)) {
+                foreach ($Change in $ChangeHash.GetEnumerator()) {
+                    $ChangeValue = $(CSVCol $TagFile $Change.Name)[$Change.Value]
+                    $ChangeTagPath = $(CSVCol $TagFile $Change.Name -TitleOnly).Split("/")
+                    $ChangeTag = $ChangeTagPath[$ChangeTagPath.Count -1]
+                    $ChangeTagFile = $ChangeTagPath[0]
+                    $ChangeTagPath = @($ChangeTagPath | ? { ($_ -ne $ChangeTag) -and ($_ -ne $ChangeTagFile) })
+                    for ($o=0; $o -lt $ChangeTagPath.Count; $o++) {
+                        $ChangeTagPathFull = '$NewTDef.'+$($ChangeTagPath[0..$o] -join '.')
+                        if (!(iex $ChangeTagPathFull)) {
+                            #if path does not exist, create wanted path's parent, then pipe to add-member to create the path, recurse at for $o until full path is built in $newobj
+                            iex $($($($ChangeTagPathFull.Split('.')) | ? { $_ -ne $($($ChangeTagPathFull.Split('.'))[$($ChangeTagPathFull.Split('.')).Count -1])}) -join '.') | Add-Member -NotePropertyName $ChangeTagPath[$o] -NotePropertyValue $([pscustomobject]@{})
+                        }
+                    }
+                    iex $ChangeTagPathFull | Add-Member -NotePropertyName $ChangeTag -NotePropertyValue $ChangeValue -Force
+                }
+            }
+
             $Save1 = $false
         } until ($CheckMech)
     }
