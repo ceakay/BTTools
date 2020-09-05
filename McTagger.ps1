@@ -207,25 +207,26 @@ Line 1: Type/Path/To/TagName
 `t If there is only 1 Key, script will bypass asking for key to work with.
 `t Type: Specify either Chassis or Type (Type will tell script to save to MechDef or VehicleDef - basically the NOT ChassisDef file)
 `t Path/To: Object path to tag. CAUTION: Will create every single object key along the way if required. Check your spelling!
-`t TagName: The name of the tag you want to add. 
+`t TagName: The name of the tag you want to add.
+`t To prompt for a value during tagging, append '/_-Value-_'
+`t`t (Example) Line1: 'Type/Description/Cost/_-Value-_'
+`t`t`t Will prompt for a value, and add '"Cost": YourValue' to Type/Description
+`t To add values to an array/list, append '_-Array-_' in line 1. Path/To should include the array's name. 
+`t`t (Example) Line1: 'Type/MechTags/items/_-Array-_'
+
 
 Line 2+: Values
 `t List possible values from line 2 onwards. 
-`t To prompt for a value, use '_-Value-_' in line 2.
-`t`t (Example) Line1: 'Type/Description/Cost' Line2: '_-Value-_'
-`t`t`t Will prompt for a value, and add '"Cost": YourValue' to Type/Description
-`t To add the TagName to an array/list, use '_-Array-_' in line 2. Path/To should include the array's name. 
-`t`t (Example) Line1: 'Type/MechTags/items/unit_legendary'; Line2: '_-Array-_'
+`t If _-Value-_ has been specified, any values in CSV will be ignored
+`t If _-Array-_ has been specified, all values in CSV will be added to array. Can specify multiple values, one value each line. 
+`t`t (Example) Line1: 'Type/MechTags/items/_-Array-_'; Line2+: unit_legendary
 `t`t`t Will add 'unit_legendary' to MechTags/Items in MechDef
 
 ==================================
 "@
 <# Not Yet Implemented
-`t To add a multi-line entries, there are two options:
-`t`t It is recommended you validate the JSON structure before hand, script will hard stop on invalid structures. i.e. https://jsonlint.com
-`t`t 1) Multi-Line to Array use a //UNIQUE// '_-MLA-_value' tag
-`t`t`t MLA will append the entire structure as-is to the end of array
-`t`t 2) Multi-Line to Collection use a //UNIQUE// '_-MLC-_value' tag
+`t To add a multi-line entries:
+`t`t Multi-Line to Collection use a //UNIQUE// '_-MLC-_value' tag
 `t`t`t MLC will append the key/value pairs, over-writing any existing keys with the new value. 
 `t`t Once you've selected a tag, dump your multiline json structure into a json file with of the same name.
 `t`t`t (Example tag/filename) Tag: '_-MLA-_BFG4Everyone'; Filename: '_-MLA-_BFG4Everyone.json'
@@ -236,9 +237,9 @@ Line 2+: Values
     }
     Write-Host "=== Review TagConfig.csv ==="
     #Parse TagConfig.csv
-    $TagFile = Join-Path -Path $PSScriptRoot -ChildPath "TagConfig.csv"
-    $CSVRawObject = Import-Csv -path $TagFile
-    $ConfigCSVTags = $(Get-Content $TagFile)[0].Split(',')
+    $TagValuesFile = Join-Path -Path $PSScriptRoot -ChildPath "TagConfig.csv"
+    $CSVRawObject = Import-Csv -path $TagValuesFile
+    $ConfigCSVTags = $(Get-Content $TagValuesFile)[0].Split(',')
     $KeysList = @($CSVRawObject | Get-Member -MemberType Properties).Name
     $KeysObject = [pscustomobject]@{}
     foreach ($Key in $KeysList) {
@@ -457,6 +458,7 @@ if (($TypeSelect -ge 1) -and ($TypeSelect -le 4)) {
     #Clear Progressbars
     Write-Progress -Activity Done! -Completed
     
+    #Start working mechs
     for ($m=0; $m -lt $TypeFileList.Count; $m++) {
         $TDefFile = $TypeFileList[$m]
         $TDefRaw = Get-Content $TDefFile.FullName -raw
@@ -469,6 +471,8 @@ if (($TypeSelect -ge 1) -and ($TypeSelect -le 4)) {
         $NewTDef = $TDef | Select-Object *
         $NewCDef = $CDef | Select-Object *
         $ChangeHash = @{}
+        $TDefChangeArray = @()
+        $CDefChangeArray = @()
 
         $CheckMech = $false
         #Reset Tag/Value display
@@ -637,24 +641,46 @@ $Sep
             do {$ChangeHeader += " "} until ($ChangeHeader.Length -ge 74)
             $ChangeHeader += '|Chassis changes to be made:'
             Write-Host $ChangeHeader;$LineNum++
-            
+            $ChangeTextArray = @()
+            $NewTDefRaw = @($($(ConvertTo-Json $NewTDef -Depth 10).Replace(',','')).Split("`n"))
+            $NewCDefRaw = @($($(ConvertTo-Json $NewCDef -Depth 10).Replace(',','')).Split("`n"))
+            $OldTDefRaw = @($($(ConvertTo-Json $TDef -Depth 10).Replace(',','')).Split("`n"))
+            $OldCDefRaw = @($($(ConvertTo-Json $CDef -Depth 10).Replace(',','')).Split("`n"))
+            try {$TDefChangeArray = $(Compare-Object $NewTDefRaw $OldTDefRaw ).InputObject.Trim(); $TDefChangeArray = $TDefChangeArray | ? {($_ -ne '{') -and ($_ -ne '}') } } catch {}
+            try {$CDefChangeArray = $(Compare-Object $NewCDefRaw $OldCDefRaw ).InputObject.Trim(); $CDefChangeArray = $CDefChangeArray | ? {($_ -ne '{') -and ($_ -ne '}') } } catch {}
+            $ChangeCount = $(@($TDefChangeArray.Count,$CDefChangeArray.Count) | Measure-Object -Maximum).Maximum
+            if ($ChangeCount -gt 0) {
+                for ($p = 0; $p -lt $ChangeCount; $p++) {
+                    $ChangeTextLine = $TDefChangeArray[$p]
+                    do {$ChangeTextLine += " "} until ($ChangeTextLine.Length -ge 74)
+                    $ChangeTextLine += '|'+$CDefChangeArray[$p]
+                    $ChangeTextArray += $ChangeTextLine
+                }
+            }
+            foreach ($ChangeTextArrayLine in $ChangeTextArray) {
+                Write-Host $ChangeTextArrayLine
+            }
+            $LineNum = $LineNum + $($ChangeTextArray.Count)
             #Tag/Value Table
             if ($DisplayValue) {
-                $TagValues = CSVCol $TagFile $SelectTag
-                $ValueTable = @{}; [ref]$ValueTableRow = 1; $TagValues | % {$ValueTable.Add($ValueTableRow.Value,$_); $ValueTableRow.Value++}; $ValueTable.GetEnumerator() | Sort-Object -property Name | Format-Table @{L='Value';E={$_.Name}},@{L=$(CSVCol $TagFile $SelectTag -TitleOnly);E={$_.Value}}
-                $LineNum += $ValueTableRow.Value+4
+                if ($SelectTagCheck -match '_-Value-_') {
+                    Write-Host $($(CSVCol $TagValuesFile $SelectTag -TitleOnly) + ' Selected. Value required.'; $LineNum++
+                } else {
+                    $TagValues = CSVCol $TagValuesFile $SelectTag
+                    $ValueTable = @{}; [ref]$ValueTableRow = 1; $TagValues | % {$ValueTable.Add($ValueTableRow.Value,$_); $ValueTableRow.Value++}; $ValueTable.GetEnumerator() | Sort-Object -property Name | Format-Table @{L='Value';E={$_.Name}},@{L=$(CSVCol $TagValuesFile $SelectTag -TitleOnly);E={$_.Value}}
+                    $LineNum += $ValueTableRow.Value+4
+                }
             } else {
                 $TagTable = @{}; [ref]$TagTableRow = 1; $ConfigCSVTags | % {$TagTable.Add($TagTableRow.Value,$_); $TagTableRow.Value++}; $TagTable.GetEnumerator() | Sort-Object -property Name | Format-Table @{L='Tag';E={$_.Name}},@{L='';E={$_.Value}}
                 $LineNum += $TagTableRow.Value+4
             }
             #Fill remaining lines including 76
             do {
-                $LineNum++
-                Write-Host ""
+                Write-Host ""; $LineNum++
             } until ($LineNum -eq 76)
             #Describe Possible Actions Line 77
             switch ($Select) {
-                'write' {Write-Host "$($SaveTo[0])Def Saved"}
+                'write' {Write-Host "$($SaveTo[0])Def Saved"; $LineNum++}
                 default {
                     if (!$SelectError) {
                         Write-Host ""; $LineNum++
@@ -671,7 +697,11 @@ $Sep
             #Line 79
             Write-Host "(Write) to commit changes to file | (RW) to repeat last tag and commit | (Clear) to clear all stored changes | (Done) at anytime to move to next def"
             #Get action - Line 80
-            [String]$Select = Read-Host -Prompt "Action"
+            if ($SelectTagCheck -match '_-Value-_') {
+                [String]$Select = Read-Host -Prompt "Enter Value:"
+            } else {
+                [String]$Select = Read-Host -Prompt "Action"
+            }
             switch ($Select) {
                 'write' {
                     $LastCommitHash = $ChangeHash.Clone()
@@ -684,45 +714,91 @@ $Sep
                 }
                 'done' {$CheckMech = $true}
                 default {
-                    try {
-                        $SelectNum = $Select / 1
-                        if ($SelectNum -is [int]) {
-                            if ($DisplayValue) {
-                                #Do values work
-                                $SelectValue = $SelectNum -1
-                                if (!$ChangeHash.$SelectTag) {
-                                    $ChangeHash += @{$SelectTag=$SelectValue}
+                    if ($SelectTagCheck -match '_-Value-_') {
+                        $SelectTagCheck = $null
+                        if ($ValuesOnly -eq $false) {
+                            $DisplayValue = (-not $DisplayValue)
+                        }
+                        $SelectValue = $Select
+                        if (!$ChangeHash.$SelectTag) {
+                            $ChangeHash += @{$SelectTag=$SelectValue}
+                        } else {
+                            $ChangeHash.$SelectTag = $SelectValue
+                        }
+                    } else {
+                        try {
+                            $SelectNum = $Select / 1
+                            if ($SelectNum -is [int]) {
+                                if ($DisplayValue) {
+                                    #Do values work
+                                    $SelectValue = $SelectNum -1
+                                    if (!$ChangeHash.$SelectTag) {
+                                        $ChangeHash += @{$SelectTag=$SelectValue}
+                                    } else {
+                                        $ChangeHash.$SelectTag = $SelectValue
+                                    }
+                                    if ($ValuesOnly -eq $false) {
+                                        $DisplayValue = (-not $DisplayValue)
+                                    }
                                 } else {
-                                    $ChangeHash.$SelectTag = $SelectValue
-                                }
-                                if ($ValuesOnly -eq $false) {
-                                    $DisplayValue = (-not $DisplayValue)
+                                    #Do tags work
+                                    $SelectTag = $SelectNum -1
+                                    #create check if tag prompts value or injects array
+                                    $SelectTagCheck = $(CSVCol $TagValuesFile $SelectTag -TitleOnly).Split('/')[-1]
+                                    if ($SelectTagCheck -eq '_-Array-_') {
+                                        #tell $changehash to inject array
+                                        $Select = 'ArraySelectedbutimbeinglazywhywouldyoutypethis'
+                                    } elseif ($SelectTagCheck -eq '_-Value-_') {
+                                        $Select = 'ValueSelectedbutimbeinglazywhywouldyoutypethis'
+                                        $DisplayValue = (-not $DisplayValue)
+                                    } else {
+                                        $DisplayValue = (-not $DisplayValue)
+                                    }
                                 }
                             } else {
-                                #Do tags work
-                                $SelectTag = $SelectNum -1
-                                $DisplayValue = (-not $DisplayValue)
+                                $EZTag = @($Select.Split('.')) | ? {$_}
+                                if ($EZTag.Count -gt 2) {
+                                    $EZTag = @($EZTag[0], $($($EZTag[1 ..$($EZTag.count -1)]) -join ('.')))
+                                    if ($($(CSVCol $TagValuesFile $EZTag[0] -TitleOnly).Split('/')[-1]) -match '_-Value-_') {
+                                        $EZCommit = $true
+                                        if (!$($ChangeHash.$EZTag[0])) {
+                                            $ChangeHash += @{$EZTag[0]=$EZTag[1]}
+                                        } else {
+                                            $ChangeHash.$EZTag[0] = $EZTag[1]
+                                        }
+                                        $DisplayValue = $false
+                                    } else {
+                                        $SelectError = "Invalid Input: $Select"
+                                    } 
+                                } elseif ($EZTag.Count -eq 2) {
+                                    if (($EZTag[0] -gt 0) -and ($EZTag[1] -gt 0)) {
+                                        #do eztag work
+                                        $EZCommit = $true
+                                        if (!$($ChangeHash.$EZTag[0])) {
+                                            $ChangeHash += @{$EZTag[0]=$EZTag[1]}
+                                        } else {
+                                            $ChangeHash.$EZTag[0] = $EZTag[1]
+                                        }
+                                        #Reset displayvalue
+                                        $DisplayValue = $false
+                                    } else {
+                                        $SelectError = "Invalid Input: $Select"
+                                    }
+                                } else {
+                                    $SelectError = "Invalid Input: $Select"
+                                }
                             }
-                        } else {
-                            $EZTag = @($Select.Split('.'))
-                            if (($EZTag.Count -ne 2) -or ($EZTag[0] -le 0) -or ($EZTag[1] -le 0)) {
-                                #Throw error
-                                $SelectError = "Invalid Input: $Select"
-                            } else  {
-                                #do eztag work
-                                $ChangeHash += @{$($EZTag[0] -1)=$($EZTag[1] -1)}
-                                #Reset displayvalue
-                                $DisplayValue = $false
-                            }
-                        }
-                    } catch {$SelectError = 'Invalid Input'}    
+                        } catch {
+                            $SelectError = 'Invalid Input'
+                        }    
+                    }
                 }
             }
-            #Make changes to $newobj if changes exist
+            #Make changes to $newobj if changes exist, else reset changes.
             if (-not !$($ChangeHash.Keys)) {
                 foreach ($Change in $ChangeHash.GetEnumerator()) {
-                    $ChangeValue = $(CSVCol $TagFile $Change.Name)[$Change.Value]
-                    $ChangeTagPath = $(CSVCol $TagFile $Change.Name -TitleOnly).Split("/")
+                    $ChangeValue = $(CSVCol $TagValuesFile $Change.Name)[$Change.Value]
+                    $ChangeTagPath = $(CSVCol $TagValuesFile $Change.Name -TitleOnly).Split("/")
                     $ChangeTag = $ChangeTagPath[$ChangeTagPath.Count -1]
                     $ChangeTagFile = $ChangeTagPath[0]
                     $ChangeTagPath = @($ChangeTagPath | ? { ($_ -ne $ChangeTag) -and ($_ -ne $ChangeTagFile) })
@@ -735,6 +811,9 @@ $Sep
                     }
                     iex $ChangeTagPathFull | Add-Member -NotePropertyName $ChangeTag -NotePropertyValue $ChangeValue -Force
                 }
+            } else {
+                $NewTDef = $TDef | Select-Object *
+                $NewCDef = $CDef | Select-Object *
             }
             #write to file
             $Save1 = $false
