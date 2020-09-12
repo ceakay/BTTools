@@ -87,47 +87,9 @@ Found Dev Root Path: $PathToDevRoot
     }
 } until ($ModtekCheck)
 
-<# never mind this was a terrible idea. snagged some json errors tho
-#Init Master Object
-$MasterObjectList = @()
-$JSONList = Get-ChildItem $PathToDevRoot -Recurse -Filter "*.json"
-$i = 0
-"" > error.txt
-foreach ($JSONFile in $JSONList) {
-    Write-Progress -Activity "Initializing JSONs" -Status "$($i+1) of $($JSONList.Count) JSONs found."
-    Try {
-        $JSONRaw = Get-Content $JSONFile.FullName -Raw
-        #Remove dirty comments >=(
-        $JSONRaw = $($($JSONRaw -replace '(?<=\/\*)((?ms).*?)(?=\*\/)',$null) -split "`n" | where {$_ -notmatch "//"} | where {$_ -notmatch "/\*\*/"}) -join "`n"
-        $MasterObjectList += $($JSONRaw | ConvertFrom-Json -depth 99)
-    } Catch {
-        "===" >> error.txt
-        $JSONFile.FullName >> error.txt
-        "---" >> error.txt
-        $Error[0] >> error.txt
-    }
-    $i++
-}
-#>
-
 #Do tool setup
 $ToolSetupCheck = $false
 do {
-    <#Don't need this anymore
-    #Prompt to skip where flags exist
-    $FlagSkipCheck = $false
-    do {
-        Clear-Host
-        $FlagSkip = Read-Host -Prompt "Skip files with existing flag set (y/n)"
-        if ($FlagSkip -like "y*") {
-            $FlagSkip = $true
-            $FlagSkipCheck = $true
-        } elseif ($FlagSkip -like "n*") {
-            $FlagSkip = $false
-            $FlagSkipCheck = $true
-        }
-    } until ($FlagSkipCheck)
-    #>
     #Prompt for Mechs/Vehicles/Gear
     $TypeSelectCheck = $false
     do {
@@ -178,7 +140,6 @@ Types:
     #Do Settings Confirm
     Clear-Host
     Write-Host @"
-Skip files with existing flag: $FlagSkip
 Selected Type: $TypeSelectText
 "@
     if ([bool]$WeightSelectText) {
@@ -190,7 +151,7 @@ Selected Type: $TypeSelectText
         $ToolSetupCheck = $true
     }
 } until ($ToolSetupCheck)
-al
+
 #Do Config Confirm
 $ConfigConfimCheck = $false
 do {
@@ -226,10 +187,10 @@ Line 2+: Values
 "@
 <# Not Yet Implemented
 `t To add a multi-line entries:
-`t`t Multi-Line to Collection use a //UNIQUE// '_-MLC-_value' tag
-`t`t`t MLC will append the key/value pairs, over-writing any existing keys with the new value. 
+`t`t Multi-Line to Collection use a //UNIQUE// '_-MLC-_Tag' tag
+`t`t`t MLC will append the entire JSON to the array 'Tag', over-writing any existing keys with the new value. 
 `t`t Once you've selected a tag, dump your multiline json structure into a json file with of the same name.
-`t`t`t (Example tag/filename) Tag: '_-MLA-_BFG4Everyone'; Filename: '_-MLA-_BFG4Everyone.json'
+`t`t`t (Example tag/filename) Tag: '_-MLC-_MechTurretLoc4Everyone'; Filename: '_-MLC-_MechTurretLoc4Everyone.json'
 #>
         Read-Host -Prompt "Enter to continue"
         Clear-Host
@@ -319,6 +280,11 @@ $Sep = ""
 do {
     $Sep = $Sep + "="
 } until ($Sep.Length -eq 149)
+$LightSep = ""
+do {
+    $LightSep = $LightSep + "-"
+} until ($LightSep.Length -eq 149)
+
 
 #Mech/Vehicle Processing
 if (($TypeSelect -ge 1) -and ($TypeSelect -le 4)) {
@@ -468,11 +434,12 @@ if (($TypeSelect -ge 1) -and ($TypeSelect -le 4)) {
         $CDef = $CDefRaw | ConvertFrom-Json
         $MechAllEquip = $TDef.inventory + $CDef.FixedEquipment
         #Init new defs
-        $NewTDef = $TDef | Select-Object *
-        $NewCDef = $CDef | Select-Object *
+        $NewTDef = $TDef | ConvertTo-Json -Depth 100 | ConvertFrom-Json
+        $NewCDef = $CDef | ConvertTo-Json -Depth 100 | ConvertFrom-Json
         $ChangeHash = @{}
         $TDefChangeArray = @()
         $CDefChangeArray = @()
+        $SaveCurrent = $false
 
         $CheckMech = $false
         #Reset Tag/Value display
@@ -551,7 +518,11 @@ $Sep
             }
             Write-Host $MechParts1; $LineNum++
             #2 - Quirk|Melee|Indir|ActEquip
-            @(Compare-Object @($ComponentIDQuirkHash.Keys) $MechAllEquip.ComponentDefID -IncludeEqual -ExcludeDifferent).InputObject | % {$MechQuirks += '| ' + $ComponentIDQuirkHash.$_ + ' '}
+            try {
+                @(Compare-Object @($ComponentIDQuirkHash.Keys) $MechAllEquip.ComponentDefID -IncludeEqual -ExcludeDifferent).InputObject | % {$MechQuirks += '| ' + $ComponentIDQuirkHash.$_ + ' '} 
+            } catch {
+                $MechQuirks = '| None'
+            }
             $MechParts2 = "             || Quirks $MechQuirks"
             if ($MechParts2.Length -gt 73) {
                 $MechParts2 = $MechParts2.Substring(0,73)
@@ -575,21 +546,21 @@ $Sep
             }
             Write-Host $MechParts2; $LineNum++
             #Class Stats
-            [string]$MechClass = $ClassWeights.$($TDef.MechTags.items | ? {$ClassWeights.Keys -contains $_})
+            [string]$MechClass = $ClassWeights.$(iex $('$TDef.'+$TypeConditionName) | ? {$ClassWeights.Keys -contains $_})
             $ClassStats1 = "  ClassStats || Class: $MechClass"
             do {$ClassStats1 += " "} until ($ClassStats1.Length -ge 74)
-            $ClassStats1 += "|| AvgTon: $($ClassAverages.$($TDef.MechTags.items | ? {$ClassWeights.Keys -contains $_}).AvgTonnage)"
+            $ClassStats1 += "|| AvgTon: $($ClassAverages.$(iex $('$TDef.'+$TypeConditionName) | ? {$ClassWeights.Keys -contains $_}).AvgTonnage)"
             do {$ClassStats1 += " "} until ($ClassStats1.Length -ge 94)
-            [int]$AvgSpeed = $($ClassAverages.$($TDef.MechTags.items | ? {$ClassWeights.Keys -contains $_}).AvgEngine) / $($ClassAverages.$($TDef.MechTags.items | ? {$ClassWeights.Keys -contains $_}).AvgTonnage)
+            [int]$AvgSpeed = $($ClassAverages.$(iex $('$TDef.'+$TypeConditionName) | ? {$ClassWeights.Keys -contains $_}).AvgEngine) / $($ClassAverages.$(iex $('$TDef.'+$TypeConditionName) | ? {$ClassWeights.Keys -contains $_}).AvgTonnage)
             $ClassStats1 += "|| AvgSpd: $AvgSpeed"
             do {$ClassStats1 += " "} until ($ClassStats1.Length -ge 114)
-            $ClassStats1 += "|| AvgArm: $($ClassAverages.$($TDef.MechTags.items | ? {$ClassWeights.Keys -contains $_}).AvgSetArmor) / $($ClassAverages.$($TDef.MechTags.items | ? {$ClassWeights.Keys -contains $_}).AvgMaxArmor)"
+            $ClassStats1 += "|| AvgArm: $($ClassAverages.$(iex $('$TDef.'+$TypeConditionName) | ? {$ClassWeights.Keys -contains $_}).AvgSetArmor) / $($ClassAverages.$(iex $('$TDef.'+$TypeConditionName) | ? {$ClassWeights.Keys -contains $_}).AvgMaxArmor)"
             Write-Host $ClassStats1; $LineNum++
             Write-Host $Sep; $LineNum++
             
             #Equipment List
             Write-Host 'Equipment List'; $LineNum++
-            Write-Host $Sep; $LineNum++
+            Write-Host $LightSep; $LineNum++
             $EquipListColSizeRaw = $MechAllEquip.ComponentDefID.count / 4
             [int]$EquipListColSize = 0.499+$EquipListColSizeRaw
             $MountList = @{}
@@ -664,7 +635,7 @@ $Sep
             #Tag/Value Table
             if ($DisplayValue) {
                 if ($SelectTagCheck -match '_-Value-_') {
-                    Write-Host $($(CSVCol $TagValuesFile $SelectTag -TitleOnly) + ' Selected. Value required.'; $LineNum++
+                    Write-Host "$(CSVCol $TagValuesFile $SelectTag -TitleOnly) Selected. Value required."; $LineNum++
                 } else {
                     $TagValues = CSVCol $TagValuesFile $SelectTag
                     $ValueTable = @{}; [ref]$ValueTableRow = 1; $TagValues | % {$ValueTable.Add($ValueTableRow.Value,$_); $ValueTableRow.Value++}; $ValueTable.GetEnumerator() | Sort-Object -property Name | Format-Table @{L='Value';E={$_.Name}},@{L=$(CSVCol $TagValuesFile $SelectTag -TitleOnly);E={$_.Value}}
@@ -674,13 +645,15 @@ $Sep
                 $TagTable = @{}; [ref]$TagTableRow = 1; $ConfigCSVTags | % {$TagTable.Add($TagTableRow.Value,$_); $TagTableRow.Value++}; $TagTable.GetEnumerator() | Sort-Object -property Name | Format-Table @{L='Tag';E={$_.Name}},@{L='';E={$_.Value}}
                 $LineNum += $TagTableRow.Value+4
             }
-            #Fill remaining lines including 76
+            #Fill remaining lines including 75
             do {
                 Write-Host ""; $LineNum++
-            } until ($LineNum -eq 76)
-            #Describe Possible Actions Line 77
+            } until ($LineNum -eq 75)
+            #Describe Possible Actions Line 76
             switch ($Select) {
-                'write' {Write-Host "$($SaveTo[0])Def Saved"; $LineNum++}
+                'ArraySelectedbutimbeinglazywhywouldyoutypethis*' {
+                    Write-Host "$(CSVCol $TagValuesFile $($Select.Split('.'))[1] -TitleOnly) array injected"
+                }
                 default {
                     if (!$SelectError) {
                         Write-Host ""; $LineNum++
@@ -692,25 +665,30 @@ $Sep
             $SelectError = $null
             $Select = $null
             $SelectNumMod = $null
-            #Line 78
-            Write-Host "Use numbers to select Tag/Value | (Tag#.Value#) to specify both. Will also Write and Done! [i.e. '2.5'; If working with only 1 Tag, use '1.x'] "
-            #Line 79
-            Write-Host "(Write) to commit changes to file | (RW) to repeat last tag and commit | (Clear) to clear all stored changes | (Done) at anytime to move to next def"
+            #Line 77-79
+            Write-Host "Use numbers to select Tag/Value | (Copy) to load previous | (Tag#.Value#) to specify both [i.e. '2.5'; If working with only 1 Tag, use '1.x']"
+            Write-Host "[When using Tag#.Value# notation, there is no validation. If tag requires a custom value, anything after the '.' will be entered as custom value.]"
+            Write-Host "(Write) to commit and next def | (RW) to load previous change and write | (Clear) to clear current changes | (Done) at anytime to move to next def"
             #Get action - Line 80
             if ($SelectTagCheck -match '_-Value-_') {
-                [String]$Select = Read-Host -Prompt "Enter Value:"
+                [String]$Select = Read-Host -Prompt "Enter Value"
             } else {
                 [String]$Select = Read-Host -Prompt "Action"
             }
             switch ($Select) {
+                'copy' {
+                    $ChangeHash = $LastCommitHash.Clone() 
+                }
                 'write' {
-                    $LastCommitHash = $ChangeHash.Clone()
+                    $SaveCurrent = $true
                 }
                 'clear' {
                     $ChangeHash = @{}
                 }
                 'rw' {
                     #repeat last tag here
+                    $ChangeHash = $LastCommitHash.Clone() 
+                    $SaveCurrent = $true
                 }
                 'done' {$CheckMech = $true}
                 default {
@@ -728,6 +706,9 @@ $Sep
                     } else {
                         try {
                             $SelectNum = $Select / 1
+                        } catch {
+                            $SelectError = 'Invalid Input'
+                        } finally {
                             if ($SelectNum -is [int]) {
                                 if ($DisplayValue) {
                                     #Do values work
@@ -747,7 +728,8 @@ $Sep
                                     $SelectTagCheck = $(CSVCol $TagValuesFile $SelectTag -TitleOnly).Split('/')[-1]
                                     if ($SelectTagCheck -eq '_-Array-_') {
                                         #tell $changehash to inject array
-                                        $Select = 'ArraySelectedbutimbeinglazywhywouldyoutypethis'
+                                        $ChangeHash += @{$SelectTag='Array'}
+                                        $Select = 'ArraySelectedbutimbeinglazywhywouldyoutypethis.'+$SelectTag
                                     } elseif ($SelectTagCheck -eq '_-Value-_') {
                                         $Select = 'ValueSelectedbutimbeinglazywhywouldyoutypethis'
                                         $DisplayValue = (-not $DisplayValue)
@@ -757,68 +739,113 @@ $Sep
                                 }
                             } else {
                                 $EZTag = @($Select.Split('.')) | ? {$_}
-                                if ($EZTag.Count -gt 2) {
-                                    $EZTag = @($EZTag[0], $($($EZTag[1 ..$($EZTag.count -1)]) -join ('.')))
-                                    if ($($(CSVCol $TagValuesFile $EZTag[0] -TitleOnly).Split('/')[-1]) -match '_-Value-_') {
-                                        $EZCommit = $true
-                                        if (!$($ChangeHash.$EZTag[0])) {
-                                            $ChangeHash += @{$EZTag[0]=$EZTag[1]}
+                                try {
+                                    $EZTag[0] = $EZTag[0] - 1
+                                    $EZTag = @($EZTag[0], $($($EZTag[1..$($($EZTag.Count) - 1)]) -join ('.')))
+                                    if ([bool](CSVCol $TagValuesFile $EZTag[0] -TitleOnly)) {
+                                        if ($($(CSVCol $TagValuesFile $EZTag[0] -TitleOnly).Split('/')[-1]) -match '_-Value-_') {
+                                            if (!$ChangeHash.$($EZTag[0])) {
+                                                $ChangeHash += @{$EZTag[0]=$EZTag[1]}
+                                            } else {
+                                                $ChangeHash.$($EZTag[0]) = $EZTag[1]
+                                            }
+                                            $DisplayValue = $false
                                         } else {
-                                            $ChangeHash.$EZTag[0] = $EZTag[1]
+                                            try {
+                                                $EZTag[1] = $EZTag[1] - 1
+                                                if ([bool]$(CSVCol $TagValuesFile $EZTag[0])[$EZTag[1]]) {
+                                                    if (!$ChangeHash.$($EZTag[0])) {
+                                                        $ChangeHash += @{$($EZTag[0])=$($EZTag[1])}
+                                                    } else {
+                                                        $ChangeHash.$($EZTag[0]) = $($EZTag[1])
+                                                    }
+                                                    #Reset displayvalue
+                                                    $DisplayValue = $false
+                                                } else {
+                                                    $SelectError = "Value not in tag. Invalid Input: $Select"
+                                                }
+                                            } catch {
+                                                $SelectError = "Invalid Value Input: $Select"
+                                            }
                                         }
-                                        $DisplayValue = $false
                                     } else {
-                                        $SelectError = "Invalid Input: $Select"
-                                    } 
-                                } elseif ($EZTag.Count -eq 2) {
-                                    if (($EZTag[0] -gt 0) -and ($EZTag[1] -gt 0)) {
-                                        #do eztag work
-                                        $EZCommit = $true
-                                        if (!$($ChangeHash.$EZTag[0])) {
-                                            $ChangeHash += @{$EZTag[0]=$EZTag[1]}
-                                        } else {
-                                            $ChangeHash.$EZTag[0] = $EZTag[1]
-                                        }
-                                        #Reset displayvalue
-                                        $DisplayValue = $false
-                                    } else {
-                                        $SelectError = "Invalid Input: $Select"
+                                        $SelectError = "Tag not in file. Invalid Input: $Select"
                                     }
-                                } else {
-                                    $SelectError = "Invalid Input: $Select"
+                                } catch {
+                                    $SelectError = "Invalid Tag Notation Input: $Select"
                                 }
                             }
-                        } catch {
-                            $SelectError = 'Invalid Input'
                         }    
                     }
                 }
             }
-            #Make changes to $newobj if changes exist, else reset changes.
-            if (-not !$($ChangeHash.Keys)) {
+            #Fix any arrays in $changehash
+            $ChangeHashArrayHolder = $null
+            if (-not !$ChangeHash) {
                 foreach ($Change in $ChangeHash.GetEnumerator()) {
-                    $ChangeValue = $(CSVCol $TagValuesFile $Change.Name)[$Change.Value]
                     $ChangeTagPath = $(CSVCol $TagValuesFile $Change.Name -TitleOnly).Split("/")
-                    $ChangeTag = $ChangeTagPath[$ChangeTagPath.Count -1]
-                    $ChangeTagFile = $ChangeTagPath[0]
-                    $ChangeTagPath = @($ChangeTagPath | ? { ($_ -ne $ChangeTag) -and ($_ -ne $ChangeTagFile) })
+                    if (($ChangeTagPath[-1] -match '_-Array-_') -and ($ChangeHash.$($Change.Name) -ne 'Array')) {
+                        $ChangeHashArrayHolder = $($Change.Name)
+                    }
+                }
+            }
+            if (-not !$ChangeHashArrayHolder) {
+                $ChangeHash.$ChangeHashArrayHolder = 'Array'
+            }
+            #Make changes to $newobj if changes exist, else reset changes.
+            if (-not !$ChangeHash) {
+                foreach ($Change in $ChangeHash.GetEnumerator()) {
+                    $ChangeIsArray = $false
+                    $ChangeTagPath = $(CSVCol $TagValuesFile $Change.Name -TitleOnly).Split("/")
+                    if ($ChangeTagPath[-1] -match '_-Value-_') {
+                        $ChangeTagPath = $ChangeTagPath | ? {$_ -ne $ChangeTagPath[-1]}
+                        $ChangeTag = $ChangeTagPath[$ChangeTagPath.Count -1]
+                        $ChangeValue = $Change.Value
+                    } elseif ($ChangeTagPath[-1] -match '_-Array-_') {
+                        $ChangeTagPath = $ChangeTagPath | ? {$_ -ne $ChangeTagPath[-1]}
+                        $ChangeTag = $ChangeTagPath[$ChangeTagPath.Count -1]
+                        $ChangeValue = @(CSVCol $TagValuesFile $Change.Name)
+                        $ChangeIsArray = $true
+                    } else {
+                        $ChangeTag = $ChangeTagPath[$ChangeTagPath.Count -1]
+                        $ChangeValue = $(CSVCol $TagValuesFile $Change.Name)[$Change.Value]
+                    }
+                    switch ($ChangeTagPath[0]) {
+                        'Type' {$ChangeTagFile = '$NewTDef'}
+                        'Chassis' {$ChangeTagFile = '$NewCDef'}
+                    }
+                    $ChangeTagPath = @($ChangeTagPath | ? { ($_ -ne $ChangeTag) -and ($_ -ne $ChangeTagPath[0]) })
                     for ($o=0; $o -lt $ChangeTagPath.Count; $o++) {
-                        $ChangeTagPathFull = '$NewTDef.'+$($ChangeTagPath[0..$o] -join '.')
+                        $ChangeTagPathFull = $ChangeTagFile+'.'+$($ChangeTagPath[0..$o] -join '.')
                         if (!(iex $ChangeTagPathFull)) {
                             #if path does not exist, create wanted path's parent, then pipe to add-member to create the path, recurse at for $o until full path is built in $newobj
                             iex $($($($ChangeTagPathFull.Split('.')) | ? { $_ -ne $($($ChangeTagPathFull.Split('.'))[$($ChangeTagPathFull.Split('.')).Count -1])}) -join '.') | Add-Member -NotePropertyName $ChangeTagPath[$o] -NotePropertyValue $([pscustomobject]@{})
                         }
                     }
-                    iex $ChangeTagPathFull | Add-Member -NotePropertyName $ChangeTag -NotePropertyValue $ChangeValue -Force
+                    if (-not $ChangeIsArray) {
+                        iex $ChangeTagPathFull | Add-Member -NotePropertyName $ChangeTag -NotePropertyValue $ChangeValue -Force
+                    } else {
+                        if (-not $(iex $ChangeTagPathFull).$ChangeTag) {
+                            iex $ChangeTagPathFull | Add-Member -NotePropertyName $ChangeTag -NotePropertyValue @() -Force
+                        }
+                        $(iex $ChangeTagPathFull).$ChangeTag = @($(iex $ChangeTagPathFull).$ChangeTag) + @(CSVCol $TagValuesFile 1) | ? {$_} | select -Unique
+                    }
                 }
             } else {
-                $NewTDef = $TDef | Select-Object *
-                $NewCDef = $CDef | Select-Object *
+                $NewTDef = $TDef | ConvertTo-Json -Depth 100 | ConvertFrom-Json
+                $NewCDef = $CDef | ConvertTo-Json -Depth 100 | ConvertFrom-Json
             }
-            #write to file
-            $Save1 = $false
+            if ($SaveCurrent) {
+                #Clone to carry over $changehash
+                $LastCommitHash = $ChangeHash.Clone()
+                #write to file
+                $NewTDef | ConvertTo-Json -Depth 100 | Out-File $($TDefFile.FullName)
+                $NewCDef | ConvertTo-Json -Depth 100 | Out-File $($CDefFile.FullName)
+                $CheckMech = $true
+            }
         } until ($CheckMech)
     }
+    #End working
     Clear-Host
     Write-Host 'Done!'
 }
