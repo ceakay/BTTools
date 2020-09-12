@@ -1,5 +1,5 @@
-Chassis/Path/To/TagName,Mech/MechTags/items/TestTag,Mech/Description/AIType
-_-Value-_,_-Array-_,Charger
-,,Boater
-,,Thomas
-,,God
+Chassis/Path/To/TagName/_-Value-_,Type/MechTags/items/_-Array-_,Type/Custom/CustomAI/AIType,Chassis/Custom/CustomAI/AIType
+,List,Charger,Charger
+,Of,Boater,Boater
+,Values,Thomas,Thomas
+,,God,God
