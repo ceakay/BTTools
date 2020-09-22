@@ -1,5 +1,3 @@
-Chassis/Path/To/TagName/_-Value-_,Type/MechTags/items/_-Array-_,Type/Custom/CustomAI/AIType,Chassis/Custom/CustomAI/AIType
-,List,Charger,Charger
-,Of,Boater,Boater
-,Values,Thomas,Thomas
-,,God,God
+Chassis/Custom/AssemblyVariant/PrefabID/_-Value-_,Chassis/Custom/AssemblyVariant/Exclude,Chassis/Custom/AssemblyVariant/Include
+,$false,$true
+,$true,$false
