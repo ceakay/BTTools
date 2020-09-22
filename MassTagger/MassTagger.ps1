@@ -55,9 +55,8 @@ $ModtekCheck = $false
 do {
     Clear-Host
     Write-Host @"
-Welcome to McTagger.
-This script is designed for adding custom mod flags individually to units.
-Use another script if your intention is to work batches of units, or even all of them. 
+Welcome to MassTagger.
+This script is designed for adding identical tags to all vehicles or mechs.
 Git: github.com/ceakay/BTTools
 "@
     Write-Host ""
@@ -152,18 +151,19 @@ Selected Type: $TypeSelectText
     }
 } until ($ToolSetupCheck)
 
+<#
 #Do Config Confirm
 $ConfigConfimCheck = $false
 do {
     Clear-Host
     if ($ConfigHelp) {
         Write-Host @"
-=== How to form TagConfig.csv ===
+=== How to form TagDelete/TagAdd ===
 TagConfig.csv allows for setting more than one Tag at the same time. CSV to allow for human readable/editable (i.e. Excel).
 Must exist in same directory as tool.
 Tool does not parse multiline entries directly from CSV. MLEs are assumed to  See Below
 
-Line 1: Type/Path/To/TagName
+Line 1: File/Path/To/TagName
 `t Use '/' as delimiter. Will trim any leading or tailing delimiters/
 `t If there is only 1 Key, script will bypass asking for key to work with.
 `t Type: Specify either Chassis or Type (Type will tell script to save to MechDef or VehicleDef - basically the NOT ChassisDef file)
@@ -175,8 +175,10 @@ Line 1: Type/Path/To/TagName
 `t To add values to an array/list, append '_-Array-_' in line 1. Path/To should include the array's name. 
 `t`t (Example) Line1: 'Type/MechTags/items/_-Array-_'
 
+Line 2: Actions
+`t Add|Move|Replace|Delete
 
-Line 2+: Values
+Line 3+: Values
 `t List possible values from line 2 onwards. 
 `t If _-Value-_ has been specified, any values in CSV will be ignored
 `t If _-Array-_ has been specified, all values in CSV will be added to array. Can specify multiple values, one value each line. 
@@ -191,12 +193,12 @@ Line 2+: Values
 `t`t`t MLC will append the entire JSON to the array 'Tag', over-writing any existing keys with the new value. 
 `t`t Once you've selected a tag, dump your multiline json structure into a json file with of the same name.
 `t`t`t (Example tag/filename) Tag: '_-MLC-_MechTurretLoc4Everyone'; Filename: '_-MLC-_MechTurretLoc4Everyone.json'
-#>
+#><#
         Read-Host -Prompt "Enter to continue"
         Clear-Host
         $ConfigHelp = $false
     }
-    Write-Host "=== Review TagConfig.csv ==="
+    Write-Host "=== Review TagDeleteAdd ==="
     #Parse TagConfig.csv
     $TagValuesFile = Join-Path -Path $PSScriptRoot -ChildPath "TagConfig.csv"
     $CSVRawObject = Import-Csv -path $TagValuesFile
@@ -225,6 +227,7 @@ if ($ConfigCSVTags.Count -eq 1) {
     $SelectTag = 0
     $ValuesOnly -eq $true
 }
+#>
 
 #Filter and Gather objects
 Clear-Host
@@ -359,6 +362,8 @@ if (($TypeSelect -ge 1) -and ($TypeSelect -le 4)) {
         'Right' = 'VR'
         'Turret' = 'VT'
     }
+
+    <#
     #Collect WeightClass Averages
     $ClassAverages = [pscustomobject]@{}
     foreach ($Class in $ClassWeights.Keys) {
@@ -420,7 +425,8 @@ if (($TypeSelect -ge 1) -and ($TypeSelect -le 4)) {
     }
     #Cleanup Averages Job
     Get-Job | Remove-Job
-    
+    #>
+
     #Clear Progressbars
     Write-Progress -Activity Done! -Completed
     
@@ -441,12 +447,60 @@ if (($TypeSelect -ge 1) -and ($TypeSelect -le 4)) {
         $CDefChangeArray = @()
         $SaveCurrent = $false
 
-        $CheckMech = $false
-        #Reset Tag/Value display
-        $DisplayValue = $false
-        if ($ValuesOnly -eq $true) {
-            $DisplayValue = $true
+        #Make changes to $newobj if changes exist, else reset changes.
+    if (-not !$ChangeHash) {
+        foreach ($Change in $ChangeHash.GetEnumerator()) {
+            $ChangeIsArray = $false
+            $ChangeTagPath = $(CSVCol $TagValuesFile $Change.Name -TitleOnly).Split("/")
+            if ($ChangeTagPath[-1] -match '_-Value-_') {
+                $ChangeTagPath = $ChangeTagPath | ? {$_ -ne $ChangeTagPath[-1]}
+                $ChangeTag = $ChangeTagPath[$ChangeTagPath.Count -1]
+                $ChangeValue = $Change.Value
+            } elseif ($ChangeTagPath[-1] -match '_-Array-_') {
+                $ChangeTagPath = $ChangeTagPath | ? {$_ -ne $ChangeTagPath[-1]}
+                $ChangeTag = $ChangeTagPath[$ChangeTagPath.Count -1]
+                $ChangeValue = @(CSVCol $TagValuesFile $Change.Name)
+                $ChangeIsArray = $true
+            } else {
+                $ChangeTag = $ChangeTagPath[$ChangeTagPath.Count -1]
+                $ChangeValue = $(CSVCol $TagValuesFile $Change.Name)[$Change.Value]
+            }
+            switch ($ChangeTagPath[0]) {
+                'Type' {$ChangeTagFile = '$NewTDef'}
+                'Chassis' {$ChangeTagFile = '$NewCDef'}
+            }
+            $ChangeTagPath = @($ChangeTagPath | ? { ($_ -ne $ChangeTag) -and ($_ -ne $ChangeTagPath[0]) })
+            for ($o=0; $o -lt $ChangeTagPath.Count; $o++) {
+                $ChangeTagPathFull = $ChangeTagFile+'.'+$($ChangeTagPath[0..$o] -join '.')
+                if (!(iex $ChangeTagPathFull)) {
+                    #if path does not exist, create wanted path's parent, then pipe to add-member to create the path, recurse at for $o until full path is built in $newobj
+                    iex $($($($ChangeTagPathFull.Split('.')) | ? { $_ -ne $($($ChangeTagPathFull.Split('.'))[$($ChangeTagPathFull.Split('.')).Count -1])}) -join '.') | Add-Member -NotePropertyName $ChangeTagPath[$o] -NotePropertyValue $([pscustomobject]@{})
+                }
+            }
+            if (-not $ChangeIsArray) {
+                iex $ChangeTagPathFull | Add-Member -NotePropertyName $ChangeTag -NotePropertyValue $ChangeValue -Force
+            } else {
+                if (-not $(iex $ChangeTagPathFull).$ChangeTag) {
+                    iex $ChangeTagPathFull | Add-Member -NotePropertyName $ChangeTag -NotePropertyValue @() -Force
+                }
+                $(iex $ChangeTagPathFull).$ChangeTag = @($(iex $ChangeTagPathFull).$ChangeTag) + @(CSVCol $TagValuesFile 1) | ? {$_} | select -Unique
+            }
         }
+    } else {
+        $NewTDef = $TDef | ConvertTo-Json -Depth 100 | ConvertFrom-Json
+        $NewCDef = $CDef | ConvertTo-Json -Depth 100 | ConvertFrom-Json
+    }
+    if ($SaveCurrent) {
+        #Clone to carry over $changehash
+        $LastCommitHash = $ChangeHash.Clone()
+        #write to file
+        $NewTDef | ConvertTo-Json -Depth 100 | Out-File $($TDefFile.FullName)
+        $NewCDef | ConvertTo-Json -Depth 100 | Out-File $($CDefFile.FullName)
+        $CheckMech = $true
+    }
+
+
+        ### STOP HERE ###
         Do {
             $LineNum = 0
             Write-Host $Sep
@@ -800,11 +854,7 @@ $Sep
                     if ($ChangeTagPath[-1] -match '_-Value-_') {
                         $ChangeTagPath = $ChangeTagPath | ? {$_ -ne $ChangeTagPath[-1]}
                         $ChangeTag = $ChangeTagPath[$ChangeTagPath.Count -1]
-                        if ($Change.Value[0] -eq '$') {
-                            $ChangeValue = iex $($Change.Value)
-                        } else {
-                            $ChangeValue = $Change.Value
-                        }
+                        $ChangeValue = $Change.Value
                     } elseif ($ChangeTagPath[-1] -match '_-Array-_') {
                         $ChangeTagPath = $ChangeTagPath | ? {$_ -ne $ChangeTagPath[-1]}
                         $ChangeTag = $ChangeTagPath[$ChangeTagPath.Count -1]
@@ -812,11 +862,7 @@ $Sep
                         $ChangeIsArray = $true
                     } else {
                         $ChangeTag = $ChangeTagPath[$ChangeTagPath.Count -1]
-                        if ($(CSVCol $TagValuesFile $Change.Name)[$Change.Value][0] -eq '$') {
-                            $ChangeValue = iex $($(CSVCol $TagValuesFile $Change.Name)[$Change.Value])
-                        } else {
-                            $ChangeValue = $(CSVCol $TagValuesFile $Change.Name)[$Change.Value]
-                        }
+                        $ChangeValue = $(CSVCol $TagValuesFile $Change.Name)[$Change.Value]
                     }
                     switch ($ChangeTagPath[0]) {
                         'Type' {$ChangeTagFile = '$NewTDef'}
