@@ -134,6 +134,12 @@ Types:
                     }
                 } until ($WeightSelectCheck)
             }
+            Clear-Host
+            $CustomFilterSelect = Read-Host -Prompt "Custom Filters (_-NA-_ for nothing)"
+            switch ($CustomFilterSelect) {
+                '_-NA-_' {$CustomFilterSelect = $null}
+                default {}
+            }
             $TypeSelectCheck = $true
         }
     } until ($TypeSelectCheck)
@@ -145,6 +151,7 @@ Selected Type: $TypeSelectText
     if ([bool]$WeightSelectText) {
         Write-Host "`tSelected Weight: $WeightSelectText"
     }
+    Write-Host "`tCustom Filter: $CustomFilterSelect"
     Write-Host "`r`n`r`n"
     $SettingsConfirm = Read-Host -Prompt "Confirm settings (y/n)"
     if ($SettingsConfirm -like "y*") {
@@ -273,7 +280,7 @@ if ($WeightSelectCheck -and ($WeightSelectText -notlike 'all')) {
 }
 #Build List of all mechs
 #Filtering done with Select-String - Construct the entire command before running iex
-$TypeFileList = Invoke-Expression $('Get-ChildItem $PathToDevRoot -Recurse -Filter $TypeFile1Filter'+$WeightsFilter+' | '+$("Select-String "+$TypeConditionComp+" -pattern `""+$TypeConditionValue+"`" -List")+' | Select-Object Path | Get-ChildItem')
+$TypeFileList = Invoke-Expression $('Get-ChildItem $PathToDevRoot -Recurse -Include  -Filter $TypeFile1Filter'+$WeightsFilter+' | '+$("Select-String "+$TypeConditionComp+" -pattern `""+$TypeConditionValue+"`" -List")+' | Select-Object Path | Get-ChildItem')
 
 #Formatting
 $Sep = ""
